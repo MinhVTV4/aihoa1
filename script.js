@@ -67,8 +67,10 @@ function init3D() {
 
         // Add lights to the scene
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft ambient light
+        ambientLight.name = "ambientLight"; // Name for easy access
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Directional light for shadows/highlights
+        directionalLight.name = "directionalLight"; // Name for easy access
         directionalLight.position.set(5, 10, 7.5);
         scene.add(directionalLight);
 
@@ -448,10 +450,12 @@ function runAnimation(plan) {
             // Pha 1: Tụ Bão
             const DURATION = 2.5;
             stepTimeline.to(camera.position, { z: 25, duration: DURATION, ease: "power2.inOut"}, 0);
-            stepTimeline.to([scene.getObjectByName("ambientLight").intensity, scene.getObjectByName("directionalLight").intensity], {
-                value: 0.1, // Incorrect target, should be { ambientLight: { intensity: 0.1 } }
-                duration: DURATION * 0.8
-            }, 0);
+            
+            // **FIXED**: Correctly target light objects for animation
+            const ambientLight = scene.getObjectByName("ambientLight");
+            const directionalLight = scene.getObjectByName("directionalLight");
+            if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION * 0.8 }, 0);
+            if(directionalLight) stepTimeline.to(directionalLight, { intensity: 0.2, duration: DURATION * 0.8 }, 0);
             
             reactantGroups.forEach(group => {
                 stepTimeline.to(group.position, {
@@ -562,7 +566,11 @@ function runAnimation(plan) {
                              }, "reformation");
                              stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION * 0.5 }, "reformation");
                              stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION * 0.5 }, "reformation");
-                             stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION*0.5}`);
+                             stepTimeline.add(()=> {
+                                 if(sourceAtom.parent) sourceAtom.parent.remove(sourceAtom);
+                                 sourceAtom.geometry.dispose();
+                                 sourceAtom.material.dispose();
+                             }, `reformation+=${DURATION*0.5}`);
                          }
                     });
 
@@ -572,19 +580,20 @@ function runAnimation(plan) {
                         }
                     });
                      
-                    // Dư âm "thở"
                     const emissiveTargets = productGroup.userData.moleculeData.atoms.map(a => a.material.emissive);
-                    stepTimeline.to(emissiveTargets, { r: 0.1, g: 0.1, b: 0.1, duration: 0.5, yoyo: true, repeat: 3 }, `reformation+=${DURATION*0.5}`);
+                    stepTimeline.to(emissiveTargets, { r: 0.1, g: 0.1, b: 0.1, duration: 0.5, yoyo: true, repeat: 3, ease: "sine.inOut" }, `reformation+=${DURATION*0.5}`);
                     productIndex++;
                 }
             });
             
             stepTimeline.to(atomPool.map(a=>a.material), {opacity: 0, duration: 0.5, onComplete: ()=> atomPool.forEach(a=>scene.remove(a))}, 'reformation');
-            // Restore light
-            stepTimeline.to([scene.getObjectByName("ambientLight").intensity, scene.getObjectByName("directionalLight").intensity], {
-                 value: 0.5, // incorrect target
-                 duration: 2.0
-            }, "reformation");
+            
+            // **FIXED**: Correctly restore light intensity
+            const ambientLight = scene.getObjectByName("ambientLight");
+            const directionalLight = scene.getObjectByName("directionalLight");
+            if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.5, duration: 2.0 }, "reformation");
+            if(directionalLight) stepTimeline.to(directionalLight, { intensity: 1.0, duration: 2.0 }, "reformation");
+
             stepTimeline.to(camera.position, { z: 25, duration: 2.0 }, "reformation");
 
         } else if (step.type === 'gas_evolution') {
@@ -662,8 +671,8 @@ async function generateReactionPlan() {
 
     QUY TẮC CHO ANIMATION STEPS:
     Luôn tạo ra đúng 2 bước ĐẦU TIÊN, và bước thứ 3 là tùy chọn:
-        1. { "type": "move_to_center", "text": "Các chất phản ứng di chuyển vào trung tâm.", "explanation": "..." }
-        2. { "type": "rearrange", "text": "Phản ứng xảy ra.", "explanation": "..." }
+        1. { "type": "move_to_center", "text": "Các chất phản ứng di chuyển vào trung tâm.", "explanation": "Các phân tử cần đến gần nhau để có thể tương tác và bắt đầu phản ứng." }
+        2. { "type": "rearrange", "text": "Phản ứng xảy ra.", "explanation": "Năng lượng va chạm phá vỡ các liên kết hóa học hiện có. Các nguyên tử sau đó tự sắp xếp lại thành các cấu trúc bền vững hơn, tạo thành sản phẩm." }
         3. (Tùy chọn) Thêm MỘT bước hiệu ứng đặc biệt như 'gas_evolution', 'precipitation', hoặc 'color_change' nếu nó thực sự xảy ra.
 
     Sử dụng các màu sau cho nguyên tử: H: #FFFFFF, O: #FF6B6B, C: #333333, N: #6B9AFF, Fe: #A19D94, S: #FFF36B, Cl: #6BFF8B, Na: #B06BFF, ...
