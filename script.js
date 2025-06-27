@@ -410,9 +410,13 @@ function runAnimation(plan) {
     clearScene();
     
     if (particles) {
-        particles.visible = true; // Ensure particles are visible to be animated
-        // Reset particle positions in case of restart
-        particles.geometry.setAttribute('position', new THREE.BufferAttribute(particles.geometry.userData.originalPositions, 3));
+        particles.visible = true;
+        const positions = particles.geometry.attributes.position.array;
+        const originalPositions = particles.geometry.userData.originalPositions;
+        for (let i = 0; i < originalPositions.length; i++) {
+            positions[i] = originalPositions[i];
+        }
+        particles.geometry.attributes.position.needsUpdate = true;
     }
     toggleDragHint(false);
     moleculeTooltip.classList.remove('show');
@@ -452,30 +456,14 @@ function runAnimation(plan) {
         const stepTimeline = gsap.timeline();
 
         if (step.type === 'move_to_center') {
-            const DURATION = 3.0; // Slower build-up
+            const DURATION = 3.5; // Kéo dài để cảm nhận
             stepTimeline.to(camera.position, { z: 25, duration: DURATION, ease: "power2.inOut"}, 0);
             
+            // **FIXED**: Correctly target light objects for animation
             const ambientLight = scene.getObjectByName("ambientLight");
             const directionalLight = scene.getObjectByName("directionalLight");
             if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION * 0.8 }, 0);
             if(directionalLight) stepTimeline.to(directionalLight, { intensity: 0.2, duration: DURATION * 0.8 }, 0);
-
-            // Animate background particles getting sucked in
-            if (particles) {
-                 const pArray = particles.geometry.attributes.position.array;
-                 const originalPArray = particles.geometry.userData.originalPositions;
-                 stepTimeline.to(pArray, {
-                     endArray: new Float32Array(pArray.length).fill(0), // Target is center
-                     duration: DURATION,
-                     ease: "power2.in",
-                     onUpdate: function() {
-                         for (let i = 0; i < pArray.length; i++) {
-                             pArray[i] = originalPArray[i] + (this.targets()[0][i] - originalPArray[i]) * this.progress();
-                         }
-                         particles.geometry.attributes.position.needsUpdate = true;
-                     }
-                 }, 0);
-            }
             
             reactantGroups.forEach(group => {
                 stepTimeline.to(group.position, {
@@ -483,13 +471,13 @@ function runAnimation(plan) {
                     duration: DURATION, ease: "power2.inOut"
                 }, 0);
                 stepTimeline.to(group.rotation, { x: '+=6', y: '+=6', duration: DURATION, ease: "power1.inOut" }, 0);
-                // Vibrate before collision
+                // Rung lắc trước va chạm
                 stepTimeline.to(group.rotation, { x: '+=0.2', y: '-=0.2', z: '+=0.2', duration: 0.5, ease: "rough({ strength: 2, points: 20 })", yoyo: true, repeat: 3}, DURATION - 1.0);
             });
 
         } else if (step.type === 'rearrange') {
             const REACTION_CENTER = new THREE.Vector3(0, 0, 0);
-            const DURATION = 5.0; // Longer, more epic duration
+            const DURATION = 5.0; // Tăng thời gian cho hoành tráng
             
             // Pha 2: Kích Nổ
             stepTimeline.addLabel("detonation", "+=0");
@@ -561,22 +549,21 @@ function runAnimation(plan) {
                     productGroup.traverse(child => { if(child.isMesh) child.material.opacity = 0; });
                     
                     productGroup.userData.moleculeData.atoms.forEach(targetAtom => {
-                        const sourceIndex = atomPool.findIndex(a => a.userData.symbol === targetAtom.userData.symbol);
-                        const sourceAtom = (sourceIndex !== -1) ? atomPool.splice(sourceIndex, 1)[0] : atomPool.pop();
-                        if(sourceAtom){
-                            const targetWorldPos = new THREE.Vector3(); targetAtom.getWorldPosition(targetWorldPos);
-                            stepTimeline.to(sourceAtom.position, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: DURATION * 0.4, ease: "power3.inOut" }, "reformation");
-                            stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION * 0.4 }, "reformation");
-                            stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION * 0.4 }, "reformation");
-                            stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION*0.4}`);
-                        }
+                         const sourceIndex = atomPool.findIndex(a => a.userData.symbol === targetAtom.userData.symbol);
+                         const sourceAtom = (sourceIndex !== -1) ? atomPool.splice(sourceIndex, 1)[0] : atomPool.pop();
+                         if(sourceAtom){
+                             const targetWorldPos = new THREE.Vector3(); targetAtom.getWorldPosition(targetWorldPos);
+                             stepTimeline.to(sourceAtom.position, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: DURATION * 0.4, ease: "power3.inOut" }, "reformation");
+                             stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION * 0.4 }, "reformation");
+                             stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION * 0.4 }, "reformation");
+                             stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION*0.4}`);
+                         }
                     });
 
                     productGroup.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 1, duration: DURATION * 0.3 }, `reformation+=${DURATION*0.1}`); });
                      
-                    // Dư âm "thở" mạnh mẽ hơn
                     const emissiveTargets = productGroup.userData.moleculeData.atoms.map(a => a.material.emissive);
-                    stepTimeline.to(emissiveTargets, { r: 0.5, g: 0.5, b: 0.2, duration: 0.8, yoyo: true, repeat: 3, ease: "sine.inOut" }, `reformation+=${DURATION*0.4}`);
+                    stepTimeline.to(emissiveTargets, { r: 0.5, g: 0.5, b: 0.2, duration: 1.0, yoyo: true, repeat: 3, ease: "sine.inOut" }, `reformation+=${DURATION*0.4}`);
                     productIndex++;
                 }
             });
@@ -633,7 +620,7 @@ async function generateReactionPlan() {
     toggleDragHint(false);
     updateAtomLegend(null);
 
-    // **Final, most robust prompt**
+    // Final, most robust prompt
     const prompt = `
     Từ các chất tham gia: "${userInput}".
     Hãy tạo một kịch bản hoạt ảnh JSON.
