@@ -37,6 +37,65 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 let hoveredMolecule = null;
 
+// NEW: Data for example reactions
+const exampleReactions = [
+    {
+        category: "🧪 Phản ứng của axit - bazơ - muối",
+        reactions: [
+            { name: "HCl + NaOH → NaCl + H₂O", input: "HCl + NaOH" },
+            { name: "H₂SO₄ + 2NaOH → Na₂SO₄ + 2H₂O", input: "H2SO4 + NaOH" },
+            { name: "HCl + AgNO₃ → AgCl↓ + HNO₃", input: "HCl + AgNO3" },
+            { name: "H₂SO₄ + BaCl₂ → BaSO₄↓ + 2HCl", input: "H2SO4 + BaCl2" },
+            { name: "NaOH + CuSO₄ → Cu(OH)₂↓ + Na₂SO₄", input: "NaOH + CuSO4" },
+            { name: "Ba(OH)₂ + FeCl₃ → Fe(OH)₃↓ + BaCl₂", input: "Ba(OH)2 + FeCl3" },
+        ]
+    },
+    {
+        category: "🔥 Phản ứng oxi hóa - khử",
+        reactions: [
+            { name: "Zn + 2HCl → ZnCl₂ + H₂↑", input: "Zn + HCl" },
+            { name: "Fe + H₂SO₄ → FeSO₄ + H₂↑", input: "Fe + H2SO4" },
+            { name: "Fe + CuSO₄ → FeSO₄ + Cu↓", input: "Fe + CuSO4" },
+            { name: "Zn + AgNO₃ → Zn(NO₃)₂ + Ag↓", input: "Zn + AgNO3" },
+            { name: "CH₄ + 2O₂ → CO₂ + 2H₂O", input: "CH4 + O2" },
+            { name: "2Mg + O₂ → 2MgO", input: "Mg + O2" },
+        ]
+    },
+    {
+        category: "🧱 Phản ứng phân hủy",
+        reactions: [
+            { name: "2KClO₃ → 2KCl + 3O₂", input: "KClO3" },
+            { name: "CaCO₃ → CaO + CO₂", input: "CaCO3" },
+        ]
+    },
+    {
+        category: "🧊 Phản ứng đặc trưng của phi kim",
+        reactions: [
+            { name: "Fe + S → FeS", input: "Fe + S" },
+            { name: "2Al + 3Cl₂ → 2AlCl₃", input: "Al + Cl2" },
+            { name: "H₂ + Cl₂ → 2HCl", input: "H2 + Cl2" },
+            { name: "N₂ + 3H₂ ⇌ 2NH₃", input: "N2 + H2" },
+        ]
+    },
+    {
+        category: "🧬 Phản ứng hữu cơ cơ bản",
+        reactions: [
+            { name: "CH₂=CH₂ + Br₂ → CH₂Br–CH₂Br", input: "CH2=CH2 + Br2" },
+            { name: "CH≡CH + H₂ → CH₂=CH₂", input: "CH=CH + H2" },
+            { name: "C₂H₆ + O₂ → CO₂ + H₂O", input: "C2H6 + O2" },
+            { name: "CH₃COOH + O₂ → CO₂ + 2H₂O", input: "CH3COOH + O2" },
+        ]
+    },
+    {
+        category: "🧫 Phản ứng đặc trưng trong nhóm chất",
+        reactions: [
+            { name: "BaCl₂ + Na₂SO₄ → BaSO₄↓ + 2NaCl", input: "BaCl2 + Na2SO4" },
+            { name: "AgNO₃ + NaCl → AgCl↓ + NaNO₃", input: "AgNO3 + NaCl" },
+            { name: "NaHCO₃ + HCl → NaCl + CO₂↑ + H₂O", input: "NaHCO3 + HCl" },
+        ]
+    }
+];
+
 /**
  * Initializes the 3D scene, camera, renderer, lights, controls, and particle system.
  * Handles WebGL error display.
@@ -255,6 +314,9 @@ let isExplanationMode = false;
 const atomLegendHeader = document.getElementById('atom-legend-header');
 const atomLegendContent = document.getElementById('atom-legend-content');
 const atomLegendToggle = atomLegendHeader.querySelector('.atom-legend-toggle');
+// NEW: Example Modal Elements
+let examplesBtn, examplesModalOverlay;
+
 
 const ATOM_COLORS = [
     { symbol: 'H', color: '#FFFFFF' }, { symbol: 'O', color: '#FF6B6B' }, { symbol: 'C', color: '#333333' },
@@ -493,49 +555,49 @@ function runAnimation(plan) {
         step.plan = plan;
 
         switch(step.type) {
-            case 'move_to_center':
-                const DURATION_MOVE = step.duration;
-                stepTimeline.to(camera.position, { z: 25, duration: DURATION_MOVE, ease: "power2.inOut"}, 0);
+            case 'move_to_center': {
+                const DURATION = step.duration;
+                stepTimeline.to(camera.position, { z: 25, duration: DURATION, ease: "power2.inOut"}, 0);
                 
                 const ambientLight = scene.getObjectByName("ambientLight");
                 const directionalLight = scene.getObjectByName("directionalLight");
-                if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION_MOVE * 0.8 }, 0);
-                if(directionalLight) stepTimeline.to(directionalLight, { intensity: 0.2, duration: DURATION_MOVE * 0.8 }, 0);
+                if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION * 0.8 }, 0);
+                if(directionalLight) stepTimeline.to(directionalLight, { intensity: 0.2, duration: DURATION * 0.8 }, 0);
                 
                 reactantGroups.forEach(group => {
                     stepTimeline.to(group.position, {
                         x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 6, z: (Math.random() - 0.5) * 6,
-                        duration: DURATION_MOVE, ease: "power2.inOut"
+                        duration: DURATION, ease: "power2.inOut"
                     }, 0);
-                    stepTimeline.to(group.rotation, { x: '+=6', y: '+=6', duration: DURATION_MOVE, ease: "power1.inOut" }, 0);
-                    stepTimeline.to(group.rotation, { x: '+=0.2', y: '-=0.2', z: '+=0.2', duration: 0.5, ease: `rough({ strength: 2, points: 20 })`, yoyo: true, repeat: 3}, DURATION_MOVE - 1.5);
+                    stepTimeline.to(group.rotation, { x: '+=6', y: '+=6', duration: DURATION, ease: "power1.inOut" }, 0);
+                    stepTimeline.to(group.rotation, { x: '+=0.2', y: '-=0.2', z: '+=0.2', duration: 0.5, ease: `rough({ strength: 2, points: 20 })`, yoyo: true, repeat: 3}, DURATION - 1.5);
                 });
                 break;
-
-            case 'disintegrate':
-                 const DURATION_DISINTEGRATE = step.duration;
+            }
+            case 'disintegrate': {
+                 const DURATION = step.duration;
                  stepTimeline.addLabel("disintegration");
                  reactantGroups.forEach(group => {
                      const atoms = group.userData.moleculeData.atoms;
                      const bonds = group.userData.moleculeData.bondMeshes;
 
                      bonds.forEach(bond => {
-                         stepTimeline.to(bond.scale, { x: 0.1, y: 0.1, z: 0.1, duration: DURATION_DISINTEGRATE * 0.5, ease: "power2.in" }, "disintegration");
-                         stepTimeline.to(bond.material, { opacity: 0, duration: DURATION_DISINTEGRATE * 0.5 }, "disintegration");
+                         stepTimeline.to(bond.scale, { x: 0.1, y: 0.1, z: 0.1, duration: DURATION * 0.5, ease: "power2.in" }, "disintegration");
+                         stepTimeline.to(bond.material, { opacity: 0, duration: DURATION * 0.5 }, "disintegration");
                      });
                      
                      atoms.forEach(atom => {
-                          stepTimeline.to(atom.material.emissive, { r: 0.2, g: 0.2, b: 0.2, duration: DURATION_DISINTEGRATE }, "disintegration");
+                          stepTimeline.to(atom.material.emissive, { r: 0.2, g: 0.2, b: 0.2, duration: DURATION }, "disintegration");
                           stepTimeline.to(atom.position, {
                               x: atom.position.x * 1.5, y: atom.position.y * 1.5, z: atom.position.z * 1.5,
-                              duration: DURATION_DISINTEGRATE, ease: "power1.out"
+                              duration: DURATION, ease: "power1.out"
                           }, "disintegration");
                      });
                  });
                 break;
-
-            case 'maelstrom':
-                const DURATION_MAELSTROM = step.duration;
+            }
+            case 'maelstrom': {
+                const DURATION = step.duration;
                 stepTimeline.addLabel("vortex");
                 const allAtoms = [];
                 reactantGroups.forEach(group => {
@@ -550,19 +612,19 @@ function runAnimation(plan) {
                 allAtoms.forEach(atom => {
                     stepTimeline.to(atom.position, {
                         x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 5, z: (Math.random() - 0.5) * 5,
-                        duration: DURATION_MAELSTROM, ease: "power2.inOut"
+                        duration: DURATION, ease: "power2.inOut"
                     }, "vortex");
-                    stepTimeline.to(atom.rotation, { y: "+=10", duration: DURATION_MAELSTROM }, "vortex");
-                    stepTimeline.to(atom.material.emissive, { r: 0.6, g: 0.6, b: 0.3, duration: DURATION_MAELSTROM }, "vortex");
+                    stepTimeline.to(atom.rotation, { y: "+=10", duration: DURATION }, "vortex");
+                    stepTimeline.to(atom.material.emissive, { r: 0.6, g: 0.6, b: 0.3, duration: DURATION }, "vortex");
                 });
-                stepTimeline.to(camera.rotation, { z: '+=0.5', duration: DURATION_MAELSTROM, ease: "power1.inOut" }, "vortex");
+                stepTimeline.to(camera.rotation, { z: '+=0.5', duration: DURATION, ease: "power1.inOut" }, "vortex");
                 break;
-
-            case 'supernova':
+            }
+            case 'supernova': {
                 const REACTION_CENTER = new THREE.Vector3(0, 0, 0);
-                const DURATION_SUPERNOVA = step.duration;
+                const DURATION = step.duration;
                 stepTimeline.addLabel("detonation", "+=0");
-                stepTimeline.to(camera.position, { z: 18, duration: DURATION_SUPERNOVA * 0.2, ease: "power3.in" }, "detonation");
+                stepTimeline.to(camera.position, { z: 18, duration: DURATION * 0.2, ease: "power3.in" }, "detonation");
                 
                 const shake = { strength: 0.3 };
                 stepTimeline.to(shake, {
@@ -593,22 +655,22 @@ function runAnimation(plan) {
                 const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending });
                 const energyRing = new THREE.Mesh(ringGeo, ringMat);
                 energyRing.rotation.x = Math.PI / 2; energyRing.userData.isEffect = true; scene.add(energyRing);
-                stepTimeline.to(energyRing.scale, { x: 1.5, y: 1.5, z: 1.5, duration: DURATION_SUPERNOVA * 0.9, ease: "power1.out"}, "supernova")
+                stepTimeline.to(energyRing.scale, { x: 1.5, y: 1.5, z: 1.5, duration: DURATION * 0.9, ease: "power1.out"}, "supernova")
                 stepTimeline.to(energyRing.material, { opacity: 0.7, duration: 1.5, ease: "power1.out" }, "supernova");
-                stepTimeline.to(energyRing.rotation, { z: "+=5", duration: DURATION_SUPERNOVA * 0.9 }, "supernova");
-                stepTimeline.to(energyRing.material, { opacity: 0, duration: 1.5, ease: "power1.in", onComplete: () => scene.remove(energyRing) }, `supernova+=${DURATION_SUPERNOVA*0.9 - 1.5}`);
+                stepTimeline.to(energyRing.rotation, { z: "+=5", duration: DURATION * 0.9 }, "supernova");
+                stepTimeline.to(energyRing.material, { opacity: 0, duration: 1.5, ease: "power1.in", onComplete: () => scene.remove(energyRing) }, `supernova+=${DURATION*0.9 - 1.5}`);
 
                 detachedAtoms.forEach(atom => {
                     stepTimeline.to(atom.position, {
                         x: (Math.random() - 0.5) * 25, y: (Math.random() - 0.5) * 25, z: (Math.random() - 0.5) * 25,
-                        duration: DURATION_SUPERNOVA * 0.7, ease: "power2.out"
+                        duration: DURATION * 0.7, ease: "power2.out"
                     }, "supernova");
-                    stepTimeline.to(atom.material.emissive, { r: 1.5, g: 1.5, b: 0.8, duration: DURATION_SUPERNOVA * 0.6, ease: "power2.in" }, "supernova");
+                    stepTimeline.to(atom.material.emissive, { r: 1.5, g: 1.5, b: 0.8, duration: DURATION * 0.6, ease: "power2.in" }, "supernova");
                 });
                 break;
-            
-            case 'reform':
-                const DURATION_REFORM = step.duration;
+            }
+            case 'reform': {
+                const DURATION = step.duration;
                 stepTimeline.addLabel("reformation", "+=0");
                 const atomPool = {};
                 scene.children.filter(c => c.userData && c.userData.isAtom).forEach(atom => {
@@ -640,34 +702,34 @@ function runAnimation(plan) {
                              const sourceAtom = atomPool[targetAtom.userData.symbol]?.pop();
                              if(sourceAtom){
                                  const targetWorldPos = new THREE.Vector3(); targetAtom.getWorldPosition(targetWorldPos);
-                                 stepTimeline.to(sourceAtom.position, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: DURATION_REFORM * 0.4, ease: "power3.inOut" }, "reformation");
-                                 stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION_REFORM * 0.4 }, "reformation");
-                                 stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION_REFORM * 0.4 }, "reformation");
-                                 stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION_REFORM*0.4}`);
+                                 stepTimeline.to(sourceAtom.position, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: DURATION * 0.4, ease: "power3.inOut" }, "reformation");
+                                 stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION * 0.4 }, "reformation");
+                                 stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION * 0.4 }, "reformation");
+                                 stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION*0.4}`);
                              }
                         });
 
-                        productGroup.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 1, duration: DURATION_REFORM * 0.3 }, `reformation+=${DURATION_REFORM*0.1}`); });
+                        productGroup.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 1, duration: DURATION * 0.3 }, `reformation+=${DURATION*0.1}`); });
                         productIndex++;
                     }
                 });
                 Object.values(atomPool).flat().forEach(atom => stepTimeline.to(atom.material, {opacity: 0, duration: 0.5, onComplete: ()=> scene.remove(atom)}, 'reformation'));
                 break;
-
-            case 'aftermath':
-                const DURATION_AFTERMATH = step.duration;
+            }
+            case 'aftermath': {
+                const DURATION = step.duration;
                 stepTimeline.addLabel("breathing", "+=0");
                 molecules.forEach(group => {
                     const emissiveTargets = group.userData.moleculeData.atoms.map(a => a.material.emissive);
                     stepTimeline.to(emissiveTargets, { r: 0.8, g: 0.8, b: 0.4, duration: 1.5, yoyo: true, repeat: 5, ease: "sine.inOut" }, `breathing`);
                 });
-                const ambientLightFinal = scene.getObjectByName("ambientLight");
-                const directionalLightFinal = scene.getObjectByName("directionalLight");
-                if(ambientLightFinal) stepTimeline.to(ambientLightFinal, { intensity: 0.5, duration: DURATION_AFTERMATH }, "breathing");
-                if(directionalLightFinal) stepTimeline.to(directionalLightFinal, { intensity: 1.0, duration: DURATION_AFTERMATH }, "breathing");
-                stepTimeline.to(camera.position, { z: 25, duration: DURATION_AFTERMATH }, "breathing");
+                const ambientLight = scene.getObjectByName("ambientLight");
+                const directionalLight = scene.getObjectByName("directionalLight");
+                if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.5, duration: DURATION }, "breathing");
+                if(directionalLight) stepTimeline.to(directionalLight, { intensity: 1.0, duration: DURATION }, "breathing");
+                stepTimeline.to(camera.position, { z: 25, duration: DURATION }, "breathing");
                 break;
-            
+            }
             case 'gas_evolution':
                 stepTimeline.add(() => createGasBubbles(step.options || {}));
                 break;
@@ -866,9 +928,116 @@ function hideWelcomeModal() {
     document.body.style.overflow = '';
     initApp();
 }
+
+// NEW: Functions for Example Modal
+function createExamplesModal() {
+    const modalStyle = `
+        .examples-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(5px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000; opacity: 0; pointer-events: none; transition: opacity 0.3s ease;
+        }
+        .examples-modal-overlay.show { opacity: 1; pointer-events: auto; }
+        .examples-modal-content {
+            background: #2a2a3e; border: 1px solid #4a4a6a;
+            padding: 2rem; border-radius: 12px;
+            width: 90%; max-width: 800px; max-height: 80vh;
+            overflow-y: auto; position: relative;
+            transform: scale(0.95); transition: transform 0.3s ease;
+        }
+        .examples-modal-overlay.show .examples-modal-content { transform: scale(1); }
+        .examples-modal-content h2 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: #e0e0e0; }
+        .examples-modal-close-btn {
+            position: absolute; top: 1rem; right: 1rem;
+            background: none; border: none; font-size: 1.5rem;
+            color: #888; cursor: pointer; transition: color 0.2s;
+        }
+        .examples-modal-close-btn:hover { color: #fff; }
+        .reaction-category { margin-bottom: 1.5rem; }
+        .reaction-category h3 { font-size: 1.1rem; font-weight: 500; color: #a0a0c0; margin-bottom: 0.75rem; border-bottom: 1px solid #4a4a6a; padding-bottom: 0.5rem; }
+        .reaction-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.75rem; }
+        .reaction-item {
+            background: #3a3a5a; padding: 0.75rem 1rem; border-radius: 6px;
+            cursor: pointer; transition: background 0.2s, transform 0.2s;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .reaction-item:hover { background: #4a4a7a; transform: translateY(-2px); }
+    `;
+    const styleSheet = document.createElement("style");
+    styleSheet.type = "text/css";
+    styleSheet.innerText = modalStyle;
+    document.head.appendChild(styleSheet);
+
+    examplesModalOverlay = document.createElement('div');
+    examplesModalOverlay.className = 'examples-modal-overlay';
+    
+    const modalContent = document.createElement('div');
+    modalContent.className = 'examples-modal-content';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'examples-modal-close-btn';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.onclick = () => examplesModalOverlay.classList.remove('show');
+
+    const title = document.createElement('h2');
+    title.textContent = 'Chọn một phản ứng ví dụ';
+    
+    modalContent.appendChild(closeBtn);
+    modalContent.appendChild(title);
+
+    exampleReactions.forEach(cat => {
+        const categoryDiv = document.createElement('div');
+        categoryDiv.className = 'reaction-category';
+        
+        const categoryTitle = document.createElement('h3');
+        categoryTitle.innerHTML = cat.category;
+        categoryDiv.appendChild(categoryTitle);
+
+        const listDiv = document.createElement('div');
+        listDiv.className = 'reaction-list';
+
+        cat.reactions.forEach(reaction => {
+            const item = document.createElement('div');
+            item.className = 'reaction-item';
+            item.textContent = reaction.name;
+            item.dataset.input = reaction.input;
+            item.onclick = (event) => {
+                input.value = event.currentTarget.dataset.input;
+                updateInputState();
+                examplesModalOverlay.classList.remove('show');
+                displayMessage(`Đã chọn ví dụ: ${event.currentTarget.dataset.input}`);
+            };
+            listDiv.appendChild(item);
+        });
+        categoryDiv.appendChild(listDiv);
+        modalContent.appendChild(categoryDiv);
+    });
+
+    examplesModalOverlay.appendChild(modalContent);
+    document.body.appendChild(examplesModalOverlay);
+    
+    examplesModalOverlay.addEventListener('click', (event) => {
+        if (event.target === examplesModalOverlay) {
+            examplesModalOverlay.classList.remove('show');
+        }
+    });
+}
+
 function initApp() {
     init3D();
     generateBtn.addEventListener('click', generateReactionPlan);
+    
+    // NEW: Create and setup example button and modal
+    createExamplesModal();
+    examplesBtn = document.createElement('button');
+    examplesBtn.innerHTML = `💡 Ví dụ`;
+    examplesBtn.className = 'control-btn'; // Use same class as others for styling
+    examplesBtn.style.marginLeft = '0.5rem';
+    examplesBtn.onclick = () => examplesModalOverlay.classList.add('show');
+    generateBtn.parentNode.insertBefore(examplesBtn, generateBtn.nextSibling);
+
+
     displayMessage("Hãy xem AI dự đoán và diễn họa phản ứng hóa học!");
     toggleDragHint(true);
     updateAtomLegend(null);
