@@ -67,10 +67,10 @@ function init3D() {
 
         // Add lights to the scene
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft ambient light
-        ambientLight.name = "ambientLight"; // Name for easy access
+        ambientLight.name = "ambientLight";
         scene.add(ambientLight);
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Directional light for shadows/highlights
-        directionalLight.name = "directionalLight"; // Name for easy access
+        directionalLight.name = "directionalLight";
         directionalLight.position.set(5, 10, 7.5);
         scene.add(directionalLight);
 
@@ -105,6 +105,7 @@ function init3D() {
         const particleGeometry = new THREE.BufferGeometry();
         particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        particleGeometry.userData.originalPositions = new Float32Array(positions); // Store original positions
         const particleMaterial = new THREE.PointsMaterial({
             size: 0.1, vertexColors: true, transparent: true,
             opacity: 0.5, blending: THREE.AdditiveBlending
@@ -408,7 +409,11 @@ function runAnimation(plan) {
     if (mainTimeline) mainTimeline.kill();
     clearScene();
     
-    if (particles) particles.visible = false;
+    if (particles) {
+        particles.visible = true; // Ensure particles are visible to be animated
+        // Reset particle positions in case of restart
+        particles.geometry.setAttribute('position', new THREE.BufferAttribute(particles.geometry.userData.originalPositions, 3));
+    }
     toggleDragHint(false);
     moleculeTooltip.classList.remove('show');
     hideExplanationModal();
@@ -447,15 +452,30 @@ function runAnimation(plan) {
         const stepTimeline = gsap.timeline();
 
         if (step.type === 'move_to_center') {
-            // Pha 1: Tụ Bão
-            const DURATION = 2.5;
+            const DURATION = 3.0; // Slower build-up
             stepTimeline.to(camera.position, { z: 25, duration: DURATION, ease: "power2.inOut"}, 0);
             
-            // **FIXED**: Correctly target light objects for animation
             const ambientLight = scene.getObjectByName("ambientLight");
             const directionalLight = scene.getObjectByName("directionalLight");
             if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION * 0.8 }, 0);
             if(directionalLight) stepTimeline.to(directionalLight, { intensity: 0.2, duration: DURATION * 0.8 }, 0);
+
+            // Animate background particles getting sucked in
+            if (particles) {
+                 const pArray = particles.geometry.attributes.position.array;
+                 const originalPArray = particles.geometry.userData.originalPositions;
+                 stepTimeline.to(pArray, {
+                     endArray: new Float32Array(pArray.length).fill(0), // Target is center
+                     duration: DURATION,
+                     ease: "power2.in",
+                     onUpdate: function() {
+                         for (let i = 0; i < pArray.length; i++) {
+                             pArray[i] = originalPArray[i] + (this.targets()[0][i] - originalPArray[i]) * this.progress();
+                         }
+                         particles.geometry.attributes.position.needsUpdate = true;
+                     }
+                 }, 0);
+            }
             
             reactantGroups.forEach(group => {
                 stepTimeline.to(group.position, {
@@ -463,82 +483,71 @@ function runAnimation(plan) {
                     duration: DURATION, ease: "power2.inOut"
                 }, 0);
                 stepTimeline.to(group.rotation, { x: '+=6', y: '+=6', duration: DURATION, ease: "power1.inOut" }, 0);
-                stepTimeline.to(group.scale, { x: 1.1, y: 1.1, z: 1.1, yoyo: true, repeat: 3, duration: DURATION / 4}, 0)
+                // Vibrate before collision
+                stepTimeline.to(group.rotation, { x: '+=0.2', y: '-=0.2', z: '+=0.2', duration: 0.5, ease: "rough({ strength: 2, points: 20 })", yoyo: true, repeat: 3}, DURATION - 1.0);
             });
 
         } else if (step.type === 'rearrange') {
-            // Pha 2: Kích Nổ
             const REACTION_CENTER = new THREE.Vector3(0, 0, 0);
-            const DURATION = 4.0; // Kéo dài thời gian cho hoành tráng hơn
+            const DURATION = 5.0; // Longer, more epic duration
+            
+            // Pha 2: Kích Nổ
             stepTimeline.addLabel("detonation", "+=0");
             stepTimeline.to(camera.position, { z: 18, duration: DURATION * 0.2, ease: "power3.in" }, "detonation");
             
-            const shake = { strength: 0.2 };
+            const shake = { strength: 0.25 };
             stepTimeline.to(shake, {
-                strength: 0, duration: 0.8,
+                strength: 0, duration: 1.0,
                 onUpdate: () => {
                     camera.position.x += (Math.random() - 0.5) * shake.strength;
                     camera.position.y += (Math.random() - 0.5) * shake.strength;
                 }
-            }, "detonation+=0.1");
+            }, "detonation");
 
             stepTimeline.add(() => {
-                // Lõi sáng
                 const coreFlash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending }));
-                coreFlash.userData.isEffect = true;
-                scene.add(coreFlash);
+                coreFlash.userData.isEffect = true; scene.add(coreFlash);
                 gsap.to(coreFlash.scale, { x: 20, y: 20, z: 20, duration: 0.4, ease: "power2.out" });
                 gsap.to(coreFlash.material, { opacity: 0, duration: 0.6, ease: "power2.out", onComplete: () => scene.remove(coreFlash) });
-                // Sóng xung kích
-                const shockwave = new THREE.Mesh(new THREE.TorusGeometry(1, 0.2, 16, 100), new THREE.MeshBasicMaterial({ color: plan.isExothermic ? 0xffa500 : 0x87ceeb, transparent: true, opacity: 0.7 }));
-                shockwave.rotation.x = Math.PI / 2;
-                shockwave.userData.isEffect = true;
-                scene.add(shockwave);
+                
+                const shockwaveColor = plan.isExothermic ? 0xffa500 : 0x87ceeb;
+                const shockwave = new THREE.Mesh(new THREE.TorusGeometry(1, 0.2, 16, 100), new THREE.MeshBasicMaterial({ color: shockwaveColor, transparent: true, opacity: 0.7 }));
+                shockwave.rotation.x = Math.PI / 2; shockwave.userData.isEffect = true; scene.add(shockwave);
                 gsap.to(shockwave.scale, { x: 30, y: 30, z: 30, duration: 1.5, ease: "power1.out" });
                 gsap.to(shockwave.material, { opacity: 0, duration: 1.5, ease: "power1.out", onComplete: () => scene.remove(shockwave) });
-            }, "detonation+=0.15");
+            }, "detonation+=0.05");
 
             // Pha 3: Siêu Tân Tinh
             stepTimeline.addLabel("supernova", "detonation+=0.2");
             const detachedAtoms = [];
             reactantGroups.forEach(group => {
-                group.traverse(child => {
-                    if (child.isMesh) stepTimeline.to(child.material, { opacity: 0, duration: 0.5 }, "detonation");
-                });
+                group.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 0, duration: 0.5 }, "detonation"); });
                 group.userData.moleculeData.atoms.forEach(atom => {
-                    const worldPos = new THREE.Vector3();
-                    atom.getWorldPosition(worldPos);
-                    const newAtom = atom.clone(); // Clone để không ảnh hưởng animation fade out của group
-                    newAtom.position.copy(worldPos);
-                    scene.add(newAtom);
-                    detachedAtoms.push(newAtom);
+                    const worldPos = new THREE.Vector3(); atom.getWorldPosition(worldPos);
+                    const newAtom = atom.clone(); newAtom.position.copy(worldPos); scene.add(newAtom); detachedAtoms.push(newAtom);
                 });
                 stepTimeline.add(() => scene.remove(group), "detonation+=0.5");
             });
             reactantGroups.length = 0; molecules = [];
             
-            // Vành đai năng lượng
             const ringGeo = new THREE.TorusGeometry(8, 0.1, 16, 100);
             const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending });
             const energyRing = new THREE.Mesh(ringGeo, ringMat);
-            energyRing.rotation.x = Math.PI / 2;
-            energyRing.userData.isEffect = true;
-            scene.add(energyRing);
-            stepTimeline.to(energyRing.material, { opacity: 0.6, duration: 1.0 }, "supernova");
-            stepTimeline.to(energyRing.rotation, { z: "+=4", duration: DURATION * 0.8 }, "supernova");
-            stepTimeline.to(energyRing.material, { opacity: 0, duration: 1.0, onComplete: () => scene.remove(energyRing) }, `supernova+=${DURATION*0.8 - 1.0}`);
-
+            energyRing.rotation.x = Math.PI / 2; energyRing.userData.isEffect = true; scene.add(energyRing);
+            stepTimeline.to(energyRing.material, { opacity: 0.6, duration: 1.5, ease: "power1.out" }, "supernova");
+            stepTimeline.to(energyRing.rotation, { z: "+=4", duration: DURATION * 0.9 }, "supernova");
+            stepTimeline.to(energyRing.material, { opacity: 0, duration: 1.5, ease: "power1.in", onComplete: () => scene.remove(energyRing) }, `supernova+=${DURATION*0.9 - 1.5}`);
 
             detachedAtoms.forEach(atom => {
                 stepTimeline.to(atom.position, {
                     x: (Math.random() - 0.5) * 20, y: (Math.random() - 0.5) * 20, z: (Math.random() - 0.5) * 20,
-                    duration: DURATION * 0.4, ease: "power2.out"
+                    duration: DURATION * 0.6, ease: "power2.out"
                 }, "supernova");
-                stepTimeline.to(atom.material.emissive, { r: 1, g: 1, b: 0.5, duration: DURATION * 0.4, ease: "power2.in" }, "supernova");
+                stepTimeline.to(atom.material.emissive, { r: 1, g: 1, b: 0.5, duration: DURATION * 0.5, ease: "power2.in" }, "supernova");
             });
 
             // Pha 4 & 5: Tái tạo & Dư âm
-            stepTimeline.addLabel("reformation", "supernova+=" + DURATION * 0.4);
+            stepTimeline.addLabel("reformation", "supernova+=" + DURATION * 0.6);
             const atomPool = [...detachedAtoms];
             const totalProductInstances = plan.products.reduce((acc, p) => acc + (p.count * baseMultiplier), 0);
             
@@ -548,52 +557,35 @@ function runAnimation(plan) {
                     const angle = (productIndex / totalProductInstances) * Math.PI * 4;
                     const radius = 4 + (productIndex / totalProductInstances) * 8;
                     const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius, z = (Math.random() - 0.5) * 6;
-
                     const productGroup = drawMolecule3D(p, x, y, z);
                     productGroup.traverse(child => { if(child.isMesh) child.material.opacity = 0; });
                     
                     productGroup.userData.moleculeData.atoms.forEach(targetAtom => {
-                         const sourceIndex = atomPool.findIndex(a => a.userData.symbol === targetAtom.userData.symbol);
-                         const sourceAtom = (sourceIndex !== -1) ? atomPool.splice(sourceIndex, 1)[0] : atomPool.pop();
-                         
-                         if(sourceAtom){
-                             const targetWorldPos = new THREE.Vector3();
-                             targetAtom.getWorldPosition(targetWorldPos);
-                             
-                             stepTimeline.to(sourceAtom.position, {
-                                 x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z,
-                                 duration: DURATION * 0.5, ease: "power3.inOut"
-                             }, "reformation");
-                             stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION * 0.5 }, "reformation");
-                             stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION * 0.5 }, "reformation");
-                             stepTimeline.add(()=> {
-                                 if(sourceAtom.parent) sourceAtom.parent.remove(sourceAtom);
-                                 sourceAtom.geometry.dispose();
-                                 sourceAtom.material.dispose();
-                             }, `reformation+=${DURATION*0.5}`);
-                         }
-                    });
-
-                    productGroup.traverse(child => {
-                        if (child.isMesh) {
-                            stepTimeline.to(child.material, { opacity: 1, duration: DURATION * 0.4 }, `reformation+=${DURATION*0.1}`);
+                        const sourceIndex = atomPool.findIndex(a => a.userData.symbol === targetAtom.userData.symbol);
+                        const sourceAtom = (sourceIndex !== -1) ? atomPool.splice(sourceIndex, 1)[0] : atomPool.pop();
+                        if(sourceAtom){
+                            const targetWorldPos = new THREE.Vector3(); targetAtom.getWorldPosition(targetWorldPos);
+                            stepTimeline.to(sourceAtom.position, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: DURATION * 0.4, ease: "power3.inOut" }, "reformation");
+                            stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION * 0.4 }, "reformation");
+                            stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION * 0.4 }, "reformation");
+                            stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION*0.4}`);
                         }
                     });
+
+                    productGroup.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 1, duration: DURATION * 0.3 }, `reformation+=${DURATION*0.1}`); });
                      
+                    // Dư âm "thở" mạnh mẽ hơn
                     const emissiveTargets = productGroup.userData.moleculeData.atoms.map(a => a.material.emissive);
-                    stepTimeline.to(emissiveTargets, { r: 0.1, g: 0.1, b: 0.1, duration: 0.5, yoyo: true, repeat: 3, ease: "sine.inOut" }, `reformation+=${DURATION*0.5}`);
+                    stepTimeline.to(emissiveTargets, { r: 0.5, g: 0.5, b: 0.2, duration: 0.8, yoyo: true, repeat: 3, ease: "sine.inOut" }, `reformation+=${DURATION*0.4}`);
                     productIndex++;
                 }
             });
             
             stepTimeline.to(atomPool.map(a=>a.material), {opacity: 0, duration: 0.5, onComplete: ()=> atomPool.forEach(a=>scene.remove(a))}, 'reformation');
-            
-            // **FIXED**: Correctly restore light intensity
             const ambientLight = scene.getObjectByName("ambientLight");
             const directionalLight = scene.getObjectByName("directionalLight");
             if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.5, duration: 2.0 }, "reformation");
             if(directionalLight) stepTimeline.to(directionalLight, { intensity: 1.0, duration: 2.0 }, "reformation");
-
             stepTimeline.to(camera.position, { z: 25, duration: 2.0 }, "reformation");
 
         } else if (step.type === 'gas_evolution') {
@@ -601,12 +593,7 @@ function runAnimation(plan) {
         } else if (step.type === 'precipitation') {
             stepTimeline.add(() => createPrecipitationParticles(step));
         } else if (step.type === 'color_change') {
-            stepTimeline.add(() => {
-                if (solutionContainer) {
-                    solutionContainer.visible = true;
-                    // ... (color change logic as before)
-                }
-            });
+            stepTimeline.add(() => { if (solutionContainer) { /* ... */ } });
         }
         
         mainTimeline.add(stepTimeline);
@@ -614,9 +601,7 @@ function runAnimation(plan) {
             if (isExplanationMode) {
                 mainTimeline.pause();
                 showExplanationModal(step.text || `Bước ${index + 1}`, step.explanation, index + 1);
-            } else {
-                displayMessage(step.text || '...');
-            }
+            } else { displayMessage(step.text || '...'); }
         }, ">");
     });
 }
@@ -648,7 +633,7 @@ async function generateReactionPlan() {
     toggleDragHint(false);
     updateAtomLegend(null);
 
-    // **FIXED**: The most robust prompt yet.
+    // **Final, most robust prompt**
     const prompt = `
     Từ các chất tham gia: "${userInput}".
     Hãy tạo một kịch bản hoạt ảnh JSON.
