@@ -122,9 +122,49 @@ function init3D() {
         solutionContainer.visible = false;
         scene.add(solutionContainer);
 
+        // NEW: Time variable for perpetual motion
+        let time = 0;
+
         function animate() {
             requestAnimationFrame(animate);
+            time += 0.05; // Increment time for vibration
             controls.update();
+
+            // NEW: Perpetual motion logic
+            // This code runs every frame after the main animation timeline is complete.
+            if (mainTimeline && mainTimeline.progress() === 1) {
+                molecules.forEach(group => {
+                    const data = group.userData.moleculeData;
+                    if (data && data.drift) { // Check if motion data exists
+                        // 1. Drifting
+                        group.position.add(data.drift);
+
+                        // Screen wrap logic to keep molecules in view
+                        const wrapLimit = 22;
+                        if (group.position.x > wrapLimit) group.position.x = -wrapLimit;
+                        if (group.position.x < -wrapLimit) group.position.x = wrapLimit;
+                        if (group.position.y > 15) group.position.y = -15;
+                        if (group.position.y < -15) group.position.y = 15;
+                        if (group.position.z > wrapLimit) group.position.z = -wrapLimit;
+                        if (group.position.z < -wrapLimit) group.position.z = wrapLimit;
+
+                        // 2. Self-rotation
+                        group.rotation.x += data.rotationSpeed.x;
+                        group.rotation.y += data.rotationSpeed.y;
+                        group.rotation.z += data.rotationSpeed.z;
+
+                        // 3. Internal Vibration
+                        data.atoms.forEach((atom, i) => {
+                            const originalPos = data.originalAtomPositions[i];
+                            const vibrationData = data.vibrationParams[i];
+                            const vibration = Math.sin(time * vibrationData.speed + vibrationData.phase) * 0.03;
+                            atom.position.copy(originalPos).addScaledVector(vibrationData.axis, vibration);
+                        });
+                    }
+                });
+            }
+
+
             if (particles && particles.visible) {
                 particles.rotation.y += 0.0005;
                 particles.rotation.x += 0.0002;
@@ -431,8 +471,11 @@ function runAnimation(plan) {
         },
         onComplete: () => {
             displayMessage("Hoạt ảnh hoàn tất!");
-            playPauseBtn.textContent = "▶️";
-            [playPauseBtn, restartBtn, timelineSlider, explanationModeToggle, ...speedButtons].forEach(el => el.disabled = true);
+            // Keep play button as pause to indicate perpetual motion can be paused
+            playPauseBtn.textContent = "⏸️"; 
+            // Only disable some controls
+            restartBtn.disabled = false;
+            timelineSlider.disabled = true;
             if (particles) particles.visible = true;
             toggleDragHint(true);
         }
@@ -456,10 +499,9 @@ function runAnimation(plan) {
         const stepTimeline = gsap.timeline();
 
         if (step.type === 'move_to_center') {
-            const DURATION = 3.5; // Kéo dài để cảm nhận
+            const DURATION = 3.5;
             stepTimeline.to(camera.position, { z: 25, duration: DURATION, ease: "power2.inOut"}, 0);
             
-            // **FIXED**: Correctly target light objects for animation
             const ambientLight = scene.getObjectByName("ambientLight");
             const directionalLight = scene.getObjectByName("directionalLight");
             if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION * 0.8 }, 0);
@@ -471,15 +513,13 @@ function runAnimation(plan) {
                     duration: DURATION, ease: "power2.inOut"
                 }, 0);
                 stepTimeline.to(group.rotation, { x: '+=6', y: '+=6', duration: DURATION, ease: "power1.inOut" }, 0);
-                // Rung lắc trước va chạm
-                stepTimeline.to(group.rotation, { x: '+=0.2', y: '-=0.2', z: '+=0.2', duration: 0.5, ease: "rough({ strength: 2, points: 20 })", yoyo: true, repeat: 3}, DURATION - 1.0);
+                stepTimeline.to(group.scale, { x: 1.1, y: 1.1, z: 1.1, yoyo: true, repeat: 3, duration: DURATION / 4}, 0)
             });
 
         } else if (step.type === 'rearrange') {
             const REACTION_CENTER = new THREE.Vector3(0, 0, 0);
-            const DURATION = 5.0; // Tăng thời gian cho hoành tráng
+            const DURATION = 5.0; 
             
-            // Pha 2: Kích Nổ
             stepTimeline.addLabel("detonation", "+=0");
             stepTimeline.to(camera.position, { z: 18, duration: DURATION * 0.2, ease: "power3.in" }, "detonation");
             
@@ -505,7 +545,6 @@ function runAnimation(plan) {
                 gsap.to(shockwave.material, { opacity: 0, duration: 1.5, ease: "power1.out", onComplete: () => scene.remove(shockwave) });
             }, "detonation+=0.05");
 
-            // Pha 3: Siêu Tân Tinh
             stepTimeline.addLabel("supernova", "detonation+=0.2");
             const detachedAtoms = [];
             reactantGroups.forEach(group => {
@@ -534,7 +573,6 @@ function runAnimation(plan) {
                 stepTimeline.to(atom.material.emissive, { r: 1, g: 1, b: 0.5, duration: DURATION * 0.5, ease: "power2.in" }, "supernova");
             });
 
-            // Pha 4 & 5: Tái tạo & Dư âm
             stepTimeline.addLabel("reformation", "supernova+=" + DURATION * 0.6);
             const atomPool = [...detachedAtoms];
             const totalProductInstances = plan.products.reduce((acc, p) => acc + (p.count * baseMultiplier), 0);
@@ -546,6 +584,17 @@ function runAnimation(plan) {
                     const radius = 4 + (productIndex / totalProductInstances) * 8;
                     const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius, z = (Math.random() - 0.5) * 6;
                     const productGroup = drawMolecule3D(p, x, y, z);
+                    
+                    // NEW: Add data for perpetual motion
+                    productGroup.userData.moleculeData.drift = new THREE.Vector3((Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01);
+                    productGroup.userData.moleculeData.rotationSpeed = new THREE.Vector3((Math.random() - 0.5) * 0.005, (Math.random() - 0.5) * 0.005, (Math.random() - 0.5) * 0.005);
+                    productGroup.userData.moleculeData.originalAtomPositions = productGroup.userData.moleculeData.atoms.map(atom => atom.position.clone());
+                    productGroup.userData.moleculeData.vibrationParams = productGroup.userData.moleculeData.atoms.map(() => ({
+                        speed: 0.5 + Math.random() * 1.5,
+                        phase: Math.random() * Math.PI * 2,
+                        axis: new THREE.Vector3().randomDirection()
+                    }));
+
                     productGroup.traverse(child => { if(child.isMesh) child.material.opacity = 0; });
                     
                     productGroup.userData.moleculeData.atoms.forEach(targetAtom => {
@@ -563,7 +612,7 @@ function runAnimation(plan) {
                     productGroup.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 1, duration: DURATION * 0.3 }, `reformation+=${DURATION*0.1}`); });
                      
                     const emissiveTargets = productGroup.userData.moleculeData.atoms.map(a => a.material.emissive);
-                    stepTimeline.to(emissiveTargets, { r: 0.5, g: 0.5, b: 0.2, duration: 1.0, yoyo: true, repeat: 3, ease: "sine.inOut" }, `reformation+=${DURATION*0.4}`);
+                    stepTimeline.to(emissiveTargets, { r: 0.5, g: 0.5, b: 0.2, duration: 1.0, yoyo: true, repeat: 5, ease: "sine.inOut" }, `reformation+=${DURATION*0.4}`);
                     productIndex++;
                 }
             });
