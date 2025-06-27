@@ -1,0 +1,570 @@
+/* Variables CSS for easy color management */
+:root {
+    --dark-bg: #111827;
+    --light-bg: #1f2937;
+    --panel-bg: #374151;
+    --accent-color: #8b5cf6; /* Accent purple color */
+    --danger-color: #ef4444; /* Red color for errors */
+    --success-color: #22c55e; /* Green color for success */
+}
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--dark-bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    color: #e5e7eb; /* Light text color */
+    padding: 1rem; /* Overall padding */
+}
+.simulation-container {
+    width: 95vw;
+    max-width: 1000px;
+    background: var(--light-bg);
+    border-radius: 1.5rem;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column; /* Arrange elements vertically */
+    gap: 1rem; /* Space between elements */
+}
+/* Add text shadow effect to the title */
+h1 {
+    text-shadow: 0 0 15px rgba(139, 92, 246, 0.7), 0 0 5px rgba(255, 255, 255, 0.5);
+    transition: text-shadow 0.3s ease-in-out;
+}
+h1:hover {
+    text-shadow: 0 0 25px rgba(139, 92, 246, 1), 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+#reaction-chamber {
+    position: relative;
+    width: 100%;
+    height: 500px; /* Fixed height for the reaction chamber */
+    background: var(--dark-bg);
+    border-radius: 1rem;
+    overflow: hidden; /* Ensure content doesn't overflow */
+    cursor: grab; /* Grab cursor */
+    display: flex; /* Use flexbox to center WebGL error content */
+    justify-content: center;
+    align-items: center;
+}
+#reaction-chamber canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+/* New: Style for the drag hint */
+#drag-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1.1rem;
+    font-weight: 500;
+    pointer-events: none; /* Allow clicks to pass through */
+    opacity: 0; /* Hidden by default */
+    transition: opacity 0.5s ease-in-out;
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+    z-index: 10; /* Ensure it's above canvas */
+}
+#drag-hint.show {
+    opacity: 1;
+}
+
+.ui-panel {
+    background: var(--panel-bg);
+    border-radius: 1rem;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.input-group {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    position: relative; /* Needed for suggestions list positioning */
+}
+/* Update style for textarea */
+#equation-input {
+    flex-grow: 1; /* Allow textarea to expand */
+    background: var(--light-bg);
+    border: 1px solid var(--accent-color);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    color: #fff;
+    outline: none; /* Remove default outline */
+    transition: border-color 0.3s, box-shadow 0.3s; /* Border color and shadow transition */
+    resize: vertical; /* Allow vertical resizing */
+    min-height: 80px; /* Minimum height */
+}
+#equation-input:focus {
+    border-color: #a78bfa; /* Border color on focus */
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.5); /* Accent shadow on focus */
+}
+/* New class for error state */
+#equation-input.input-error {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.5); /* Red shadow for error */
+}
+/* New class for valid state */
+#equation-input.input-valid {
+    border-color: var(--success-color);
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.5); /* Green shadow for valid */
+}
+
+.main-btn {
+    background-image: linear-gradient(to right, #6366f1, var(--accent-color));
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.5rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease; /* Smooth transition effect */
+    font-weight: 600;
+    display: flex; /* Use flexbox to center spinner and text */
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+.main-btn:hover {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+    transform: translateY(-2px); /* Slight lift effect */
+}
+.main-btn:disabled {
+    background-image: none;
+    background-color: #4b5563;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
+#controls-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap; /* Allow buttons to wrap on small screens */
+    justify-content: center; /* Center align buttons */
+}
+.icon-btn {
+    background: transparent;
+    border: 1px solid #6b7280;
+    color: #d1d5db;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1.2rem;
+}
+.icon-btn:hover {
+    border-color: var(--accent-color);
+    color: white;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+}
+.icon-btn:disabled {
+    color: #6b7280;
+    border-color: #4b5563;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+/* New style for the explanation mode toggle button to make it look distinct */
+#explanation-mode-toggle.active {
+    background-image: linear-gradient(to right, var(--accent-color), #6366f1);
+    color: white;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
+}
+
+
+/* Add style for speed and timeline sliders */
+.speed-control-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem; /* Space below progress bar */
+}
+.speed-btn {
+    background-color: var(--panel-bg);
+    color: #e5e7eb;
+    padding: 0.4rem 0.8rem;
+    border-radius: 0.5rem;
+    border: 1px solid #6b7280;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.8rem;
+}
+.speed-btn:hover:not(.active) {
+    border-color: var(--accent-color);
+    color: white;
+}
+.speed-btn.active {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+    font-weight: 600;
+}
+.speed-btn:disabled {
+    background-color: #4b5563;
+    border-color: #4b5563;
+    color: #9ca3af;
+    cursor: not-allowed;
+}
+
+#timeline-slider {
+    width: 100%;
+    -webkit-appearance: none; /* Hide default appearance */
+    height: 8px;
+    background: #4b5563;
+    border-radius: 99px;
+    outline: none;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    margin-top: 1rem; /* Space from control buttons */
+}
+#timeline-slider:hover {
+    opacity: 1;
+}
+#timeline-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.5);
+}
+#timeline-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    cursor: pointer;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.5);
+}
+
+
+#progress-container {
+    flex-grow: 1;
+    height: 8px;
+    background: #4b5563;
+    border-radius: 99px;
+    overflow: hidden;
+    display: none; /* Hide old progress bar, replaced by new slider */
+}
+#progress-bar {
+    width: 0%;
+    height: 100%;
+    background: var(--accent-color);
+    border-radius: 99px;
+    transition: width 0.3s ease; /* Transition effect for progress bar */
+}
+/* Update style for info-text to act like a toast */
+#info-text {
+    text-align: center;
+    min-height: 24px; /* Maintain space to prevent layout shift */
+    color: #e5e7eb;
+    opacity: 0; /* Hidden by default */
+    transition: opacity 0.3s ease-in-out, color 0.3s ease-in-out; /* Transition effect */
+    font-size: 1rem; /* Increase font size */
+    font-weight: 600; /* Increase font weight */
+}
+#info-text.error-message {
+    color: var(--danger-color); /* Red color for errors */
+}
+
+/* Spinner CSS */
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #fff;
+    border-radius: 50%;
+    width: 1.5rem;
+    height: 1.5rem;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* WebGL Error message */
+.webgl-error-message {
+    text-align: center;
+    padding: 1.5rem;
+    background-color: var(--danger-color); /* Red background for errors */
+    color: white;
+    border-radius: 0.75rem;
+    font-size: 1.1rem; /* Larger font for readability */
+    max-width: 80%;
+}
+.webgl-error-message h2 {
+    font-size: 1.8rem; /* Larger heading */
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+.webgl-error-message p {
+    margin-bottom: 0.75rem;
+}
+.webgl-error-message a {
+    color: #fee2e2;
+    text-decoration: underline;
+}
+.webgl-error-message a:hover {
+    color: #fff;
+}
+
+/* New: CSS for Welcome Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+}
+.modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+.welcome-modal {
+    background-color: var(--panel-bg);
+    border-radius: 1rem;
+    padding: 2rem;
+    max-width: 500px;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    transform: scale(0.9);
+    transition: transform 0.3s ease-in-out;
+}
+.modal-overlay.show .welcome-modal {
+    transform: scale(1);
+}
+.welcome-modal h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: white;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+}
+.welcome-modal p {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #d1d5db;
+    margin-bottom: 1.5rem;
+}
+.modal-close-btn {
+    background-image: linear-gradient(to right, #6366f1, var(--accent-color));
+    color: white;
+    padding: 0.8rem 2rem;
+    border-radius: 0.75rem;
+    border: none;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 1.1rem;
+    transition: all 0.3s ease;
+}
+.modal-close-btn:hover {
+    box-shadow: 0 0 25px rgba(139, 92, 246, 0.6);
+    transform: translateY(-3px);
+}
+
+/* NEW: Styles for Atom Legend */
+.atom-legend {
+    background-color: var(--light-bg);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.atom-legend-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--accent-color);
+}
+.atom-legend-header:hover {
+    color: #a78bfa;
+}
+.atom-legend-toggle {
+    font-size: 1.5rem;
+    line-height: 1;
+    transition: transform 0.2s ease-in-out;
+}
+.atom-legend-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-in-out;
+    display: grid; /* Use grid for layout */
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); /* Responsive columns */
+    gap: 0.5rem;
+    padding-top: 0; /* Initially no padding */
+}
+.atom-legend-content.expanded {
+    max-height: 200px; /* Max height when expanded (adjust as needed) */
+    overflow-y: auto; /* Enable scrolling if content overflows */
+    padding-top: 0.75rem; /* Add padding when expanded */
+}
+.atom-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+}
+.atom-color-circle {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0; /* Prevent circle from shrinking */
+}
+
+/* Styles for new clear button */
+.clear-input-btn {
+    background: transparent;
+    border: none;
+    color: #d1d5db;
+    font-size: 1.5rem;
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem; /* Position inside input field */
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5; /* Ensure it's above the textarea */
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    display: none; /* Hidden by default */
+}
+.clear-input-btn:hover {
+    opacity: 1;
+    color: white;
+}
+
+/* Styles for suggestions list */
+.suggestions-list {
+    position: absolute;
+    top: 100%; /* Position below the input */
+    left: 0;
+    right: 0;
+    background-color: var(--panel-bg);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 10;
+    border: 1px solid var(--accent-color);
+    display: none; /* Hidden by default */
+    margin-top: 0.5rem; /* Space between input and list */
+}
+.suggestions-list.show {
+    display: block;
+}
+.suggestion-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    color: #d1d5db;
+    transition: background-color 0.2s;
+}
+.suggestion-item:hover {
+    background-color: var(--light-bg);
+}
+
+/* NEW: Styles for Molecule Tooltip */
+#molecule-tooltip {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+    pointer-events: none; /* Allow interaction with elements below */
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    z-index: 50; /* Ensure it's above other elements */
+    white-space: nowrap; /* Prevent text wrapping */
+    text-align: left; /* Align text within tooltip */
+    line-height: 1.3;
+}
+#molecule-tooltip.show {
+    opacity: 1;
+}
+
+/* NEW: Styles for Explanation Modal/Box */
+.explanation-modal-overlay {
+    position: absolute; /* Position relative to #reaction-chamber */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent overlay */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100; /* Above 3D scene but below welcome modal */
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+}
+.explanation-modal-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+.explanation-box {
+    background-color: var(--panel-bg);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    max-width: 450px;
+    text-align: center;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    transform: translateY(20px); /* Start slightly below */
+    transition: transform 0.3s ease-in-out;
+    color: #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.explanation-modal-overlay.show .explanation-box {
+    transform: translateY(0); /* Slide into place */
+}
+.explanation-box h3 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    margin-bottom: 0.5rem;
+}
+.explanation-box p {
+    font-size: 1rem;
+    line-height: 1.5;
+}
+.explanation-continue-btn {
+    background-image: linear-gradient(to right, #6366f1, var(--accent-color));
+    color: white;
+    padding: 0.6rem 1.2rem;
+    border-radius: 0.5rem;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    align-self: center; /* Center the button */
+}
+.explanation-continue-btn:hover {
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5);
+    transform: translateY(-1px);
+}
