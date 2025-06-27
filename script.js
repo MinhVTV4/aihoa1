@@ -423,8 +423,6 @@ function validateReactionPlan(plan) {
     if (!plan.title || typeof plan.title !== 'string') throw new Error("Thiếu 'title' trong phản hồi AI.");
     if (!Array.isArray(plan.reactants)) throw new Error("Thiếu 'reactants' trong phản hồi AI.");
     if (!Array.isArray(plan.products)) throw new Error("Thiếu 'products' trong phản hồi AI.");
-    if (!Array.isArray(plan.animationSteps)) throw new Error("Thiếu 'animationSteps' trong phản hồi AI.");
-    // Validate existence of isExothermic and bonds
     if (typeof plan.isExothermic !== 'boolean') throw new Error("Thiếu trường 'isExothermic' trong phản hồi AI.");
     const allSubstances = [...plan.reactants, ...plan.products];
     for(const sub of allSubstances){
@@ -445,7 +443,7 @@ function runAnimation(plan) {
     clearScene();
     
     if (particles) {
-        particles.visible = true; 
+        particles.visible = true;
         const positions = particles.geometry.attributes.position.array;
         const originalPositions = particles.geometry.userData.originalPositions;
         for (let i = 0; i < originalPositions.length; i++) {
@@ -488,197 +486,202 @@ function runAnimation(plan) {
         }
     });
     
-    // Hard-coded 6-phase sequence
-    const animationSequence = [
-        { type: "move_to_center", text: "Các chất phản ứng di chuyển vào trung tâm.", duration: 3.5 },
-        { type: "disintegrate", text: "Phá vỡ liên kết ban đầu.", duration: 1.5 },
-        { type: "maelstrom", text: "Các nguyên tử được trộn lẫn.", duration: 2.5 },
-        { type: "supernova", text: "Giải phóng năng lượng phản ứng.", duration: 2.0 },
-        { type: "reform", text: "Hình thành sản phẩm mới.", duration: 3.0 },
-        { type: "aftermath", text: "Sản phẩm ổn định.", duration: 3.0 }
-    ];
-
-    animationSequence.forEach(step => {
+    plan.animationSteps.forEach((step, stepIndex) => {
         const stepTimeline = gsap.timeline();
 
-        if (step.type === 'move_to_center') {
-            // Pha 1: Tụ Bão
-            const DURATION = step.duration;
-            stepTimeline.to(camera.position, { z: 25, duration: DURATION, ease: "power2.inOut"}, 0);
-            
-            const ambientLight = scene.getObjectByName("ambientLight");
-            const directionalLight = scene.getObjectByName("directionalLight");
-            if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION * 0.8 }, 0);
-            if(directionalLight) stepTimeline.to(directionalLight, { intensity: 0.2, duration: DURATION * 0.8 }, 0);
-            
-            reactantGroups.forEach(group => {
-                stepTimeline.to(group.position, {
-                    x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 6, z: (Math.random() - 0.5) * 6,
-                    duration: DURATION, ease: "power2.inOut"
-                }, 0);
-                stepTimeline.to(group.rotation, { x: '+=6', y: '+=6', duration: DURATION, ease: "power1.inOut" }, 0);
-                stepTimeline.to(group.rotation, { x: '+=0.2', y: '-=0.2', z: '+=0.2', duration: 0.5, ease: "rough({ strength: 2, points: 20 })", yoyo: true, repeat: 3}, DURATION - 1.5);
-            });
+        // Pass the plan to each step for context if needed
+        step.plan = plan;
 
-        } else if (step.type === 'disintegrate') {
-            // Pha 2: Phân rã
-            const DURATION = step.duration;
-            stepTimeline.addLabel("disintegration");
-            reactantGroups.forEach(group => {
-                const atoms = group.userData.moleculeData.atoms;
-                const bonds = group.userData.moleculeData.bondMeshes;
-                bonds.forEach(bond => {
-                    stepTimeline.to(bond.scale, { x: 0.1, y: 0.1, z: 0.1, duration: DURATION * 0.5, ease: "power2.in" }, "disintegration");
-                    stepTimeline.to(bond.material, { opacity: 0, duration: DURATION * 0.5 }, "disintegration");
-                });
-                atoms.forEach(atom => {
-                     stepTimeline.to(atom.material.emissive, { r: 0.2, g: 0.2, b: 0.2, duration: DURATION }, "disintegration");
-                     stepTimeline.to(atom.position, {
-                         x: atom.position.x * 1.5, y: atom.position.y * 1.5, z: atom.position.z * 1.5,
-                         duration: DURATION, ease: "power1.out"
-                     }, "disintegration");
-                });
-            });
-
-        } else if (step.type === 'maelstrom') {
-            // Pha 3: Hỗn Nguyên
-            const DURATION = step.duration;
-            stepTimeline.addLabel("vortex");
-            const allAtoms = [];
-            reactantGroups.forEach(group => {
-                group.userData.moleculeData.atoms.forEach(atom => {
-                    const worldPos = new THREE.Vector3(); atom.getWorldPosition(worldPos);
-                    scene.add(atom); atom.position.copy(worldPos); allAtoms.push(atom);
-                });
-                scene.remove(group);
-            });
-            reactantGroups.length = 0;
-
-            allAtoms.forEach(atom => {
-                stepTimeline.to(atom.position, {
-                    x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 5, z: (Math.random() - 0.5) * 5,
-                    duration: DURATION, ease: "power2.inOut"
-                }, "vortex");
-                stepTimeline.to(atom.rotation, { y: "+=10", duration: DURATION }, "vortex");
-                stepTimeline.to(atom.material.emissive, { r: 0.6, g: 0.6, b: 0.3, duration: DURATION }, "vortex");
-            });
-            stepTimeline.to(camera.rotation, { z: '+=0.5', duration: DURATION, ease: "power1.inOut" }, "vortex");
-        
-        } else if (step.type === 'supernova') {
-            // Pha 4: Kích Nổ
-            const REACTION_CENTER = new THREE.Vector3(0, 0, 0);
-            const DURATION = step.duration;
-            stepTimeline.addLabel("detonation", "+=0");
-            stepTimeline.to(camera.position, { z: 18, duration: DURATION * 0.2, ease: "power3.in" }, "detonation");
-            
-            const shake = { strength: 0.3 };
-            stepTimeline.to(shake, {
-                strength: 0, duration: 1.2,
-                onUpdate: () => {
-                    camera.position.x += (Math.random() - 0.5) * shake.strength;
-                    camera.position.y += (Math.random() - 0.5) * shake.strength;
-                }
-            }, "detonation");
-
-            stepTimeline.add(() => {
-                const coreFlash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending }));
-                coreFlash.userData.isEffect = true; scene.add(coreFlash);
-                gsap.to(coreFlash.scale, { x: 25, y: 25, z: 25, duration: 0.5, ease: "power2.out" });
-                gsap.to(coreFlash.material, { opacity: 0, duration: 0.7, ease: "power2.out", onComplete: () => scene.remove(coreFlash) });
+        switch(step.type) {
+            case 'move_to_center':
+                const DURATION_MOVE = step.duration;
+                stepTimeline.to(camera.position, { z: 25, duration: DURATION_MOVE, ease: "power2.inOut"}, 0);
                 
-                const shockwaveColor = plan.isExothermic ? 0xffa500 : 0x87ceeb;
-                const shockwave = new THREE.Mesh(new THREE.TorusGeometry(1, 0.2, 16, 100), new THREE.MeshBasicMaterial({ color: shockwaveColor, transparent: true, opacity: 0.8 }));
-                shockwave.rotation.x = Math.PI / 2; shockwave.userData.isEffect = true; scene.add(shockwave);
-                gsap.to(shockwave.scale, { x: 40, y: 40, z: 40, duration: 2.0, ease: "power1.out" });
-                gsap.to(shockwave.material, { opacity: 0, duration: 2.0, ease: "power1.out", onComplete: () => scene.remove(shockwave) });
-            }, "detonation+=0.05");
+                const ambientLight = scene.getObjectByName("ambientLight");
+                const directionalLight = scene.getObjectByName("directionalLight");
+                if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.1, duration: DURATION_MOVE * 0.8 }, 0);
+                if(directionalLight) stepTimeline.to(directionalLight, { intensity: 0.2, duration: DURATION_MOVE * 0.8 }, 0);
+                
+                reactantGroups.forEach(group => {
+                    stepTimeline.to(group.position, {
+                        x: (Math.random() - 0.5) * 6, y: (Math.random() - 0.5) * 6, z: (Math.random() - 0.5) * 6,
+                        duration: DURATION_MOVE, ease: "power2.inOut"
+                    }, 0);
+                    stepTimeline.to(group.rotation, { x: '+=6', y: '+=6', duration: DURATION_MOVE, ease: "power1.inOut" }, 0);
+                    stepTimeline.to(group.rotation, { x: '+=0.2', y: '-=0.2', z: '+=0.2', duration: 0.5, ease: `rough({ strength: 2, points: 20 })`, yoyo: true, repeat: 3}, DURATION_MOVE - 1.5);
+                });
+                break;
 
-            stepTimeline.addLabel("supernova", "detonation+=0.2");
-            const detachedAtoms = scene.children.filter(c => c.userData.isAtom);
-            
-            const ringGeo = new THREE.TorusGeometry(10, 0.15, 16, 100);
-            const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending });
-            const energyRing = new THREE.Mesh(ringGeo, ringMat);
-            energyRing.rotation.x = Math.PI / 2; energyRing.userData.isEffect = true; scene.add(energyRing);
-            stepTimeline.to(energyRing.scale, { x: 1.5, y: 1.5, z: 1.5, duration: DURATION * 0.9, ease: "power1.out"}, "supernova")
-            stepTimeline.to(energyRing.material, { opacity: 0.7, duration: 1.5, ease: "power1.out" }, "supernova");
-            stepTimeline.to(energyRing.rotation, { z: "+=5", duration: DURATION * 0.9 }, "supernova");
-            stepTimeline.to(energyRing.material, { opacity: 0, duration: 1.5, ease: "power1.in", onComplete: () => scene.remove(energyRing) }, `supernova+=${DURATION*0.9 - 1.5}`);
+            case 'disintegrate':
+                 const DURATION_DISINTEGRATE = step.duration;
+                 stepTimeline.addLabel("disintegration");
+                 reactantGroups.forEach(group => {
+                     const atoms = group.userData.moleculeData.atoms;
+                     const bonds = group.userData.moleculeData.bondMeshes;
 
-            detachedAtoms.forEach(atom => {
-                stepTimeline.to(atom.position, {
-                    x: (Math.random() - 0.5) * 25, y: (Math.random() - 0.5) * 25, z: (Math.random() - 0.5) * 25,
-                    duration: DURATION * 0.7, ease: "power2.out"
-                }, "supernova");
-                stepTimeline.to(atom.material.emissive, { r: 1.5, g: 1.5, b: 0.8, duration: DURATION * 0.6, ease: "power2.in" }, "supernova");
-            });
+                     bonds.forEach(bond => {
+                         stepTimeline.to(bond.scale, { x: 0.1, y: 0.1, z: 0.1, duration: DURATION_DISINTEGRATE * 0.5, ease: "power2.in" }, "disintegration");
+                         stepTimeline.to(bond.material, { opacity: 0, duration: DURATION_DISINTEGRATE * 0.5 }, "disintegration");
+                     });
+                     
+                     atoms.forEach(atom => {
+                          stepTimeline.to(atom.material.emissive, { r: 0.2, g: 0.2, b: 0.2, duration: DURATION_DISINTEGRATE }, "disintegration");
+                          stepTimeline.to(atom.position, {
+                              x: atom.position.x * 1.5, y: atom.position.y * 1.5, z: atom.position.z * 1.5,
+                              duration: DURATION_DISINTEGRATE, ease: "power1.out"
+                          }, "disintegration");
+                     });
+                 });
+                break;
 
-        } else if (step.type === 'reform') {
-            // Pha 5: Tái tạo từ hỗn loạn
-            const DURATION = step.duration;
-            stepTimeline.addLabel("reformation", "+=0");
-            const atomPool = {};
-            scene.children.filter(c => c.userData.isAtom).forEach(atom => {
-                const symbol = atom.userData.symbol;
-                if (!atomPool[symbol]) atomPool[symbol] = [];
-                atomPool[symbol].push(atom);
-            });
-            const totalProductInstances = plan.products.reduce((acc, p) => acc + (p.count * baseMultiplier), 0);
-            let productIndex = 0;
-
-            plan.products.forEach(p => {
-                for (let j = 0; j < Math.max(1, p.count) * baseMultiplier; j++) {
-                    const angle = (productIndex / totalProductInstances) * Math.PI * 4;
-                    const radius = 5 + (productIndex / totalProductInstances) * 10;
-                    const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius, z = (Math.random() - 0.5) * 6;
-                    const productGroup = drawMolecule3D(p, x, y, z);
-                    
-                    productGroup.userData.moleculeData.drift = new THREE.Vector3((Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01);
-                    productGroup.userData.moleculeData.rotationSpeed = new THREE.Vector3((Math.random() - 0.5) * 0.005, (Math.random() - 0.5) * 0.005, (Math.random() - 0.5) * 0.005);
-                    productGroup.userData.moleculeData.originalAtomPositions = productGroup.userData.moleculeData.atoms.map(atom => atom.position.clone());
-                    productGroup.userData.moleculeData.vibrationParams = productGroup.userData.moleculeData.atoms.map(() => ({
-                        speed: 0.5 + Math.random() * 1.5, phase: Math.random() * Math.PI * 2, axis: new THREE.Vector3().randomDirection()
-                    }));
-
-                    productGroup.traverse(child => { if(child.isMesh) child.material.opacity = 0; });
-                    
-                    productGroup.userData.moleculeData.atoms.forEach(targetAtom => {
-                         const sourceAtom = atomPool[targetAtom.userData.symbol]?.pop();
-                         if(sourceAtom){
-                             const targetWorldPos = new THREE.Vector3(); targetAtom.getWorldPosition(targetWorldPos);
-                             stepTimeline.to(sourceAtom.position, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: DURATION * 0.4, ease: "power3.inOut" }, "reformation");
-                             stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION * 0.4 }, "reformation");
-                             stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION * 0.4 }, "reformation");
-                             stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION*0.4}`);
-                         }
+            case 'maelstrom':
+                const DURATION_MAELSTROM = step.duration;
+                stepTimeline.addLabel("vortex");
+                const allAtoms = [];
+                reactantGroups.forEach(group => {
+                    group.userData.moleculeData.atoms.forEach(atom => {
+                        const worldPos = new THREE.Vector3(); atom.getWorldPosition(worldPos);
+                        scene.add(atom); atom.position.copy(worldPos); allAtoms.push(atom);
                     });
+                    scene.remove(group);
+                });
+                reactantGroups.length = 0;
 
-                    productGroup.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 1, duration: DURATION * 0.3 }, `reformation+=${DURATION*0.1}`); });
-                    productIndex++;
-                }
-            });
-            Object.values(atomPool).flat().forEach(atom => stepTimeline.to(atom.material, {opacity: 0, duration: 0.5, onComplete: ()=> scene.remove(atom)}, 'reformation'));
+                allAtoms.forEach(atom => {
+                    stepTimeline.to(atom.position, {
+                        x: (Math.random() - 0.5) * 5, y: (Math.random() - 0.5) * 5, z: (Math.random() - 0.5) * 5,
+                        duration: DURATION_MAELSTROM, ease: "power2.inOut"
+                    }, "vortex");
+                    stepTimeline.to(atom.rotation, { y: "+=10", duration: DURATION_MAELSTROM }, "vortex");
+                    stepTimeline.to(atom.material.emissive, { r: 0.6, g: 0.6, b: 0.3, duration: DURATION_MAELSTROM }, "vortex");
+                });
+                stepTimeline.to(camera.rotation, { z: '+=0.5', duration: DURATION_MAELSTROM, ease: "power1.inOut" }, "vortex");
+                break;
 
-        } else if (step.type === 'aftermath') {
-             // Pha 6: Dư âm
-            const DURATION = step.duration;
-            stepTimeline.addLabel("breathing", "+=0");
-            molecules.forEach(group => {
-                const emissiveTargets = group.userData.moleculeData.atoms.map(a => a.material.emissive);
-                stepTimeline.to(emissiveTargets, { r: 0.8, g: 0.8, b: 0.4, duration: 1.5, yoyo: true, repeat: 3, ease: "sine.inOut" }, `breathing`);
-            });
-            const ambientLight = scene.getObjectByName("ambientLight");
-            const directionalLight = scene.getObjectByName("directionalLight");
-            if(ambientLight) stepTimeline.to(ambientLight, { intensity: 0.5, duration: DURATION }, "breathing");
-            if(directionalLight) stepTimeline.to(directionalLight, { intensity: 1.0, duration: DURATION }, "breathing");
-            stepTimeline.to(camera.position, { z: 25, duration: DURATION }, "breathing");
+            case 'supernova':
+                const REACTION_CENTER = new THREE.Vector3(0, 0, 0);
+                const DURATION_SUPERNOVA = step.duration;
+                stepTimeline.addLabel("detonation", "+=0");
+                stepTimeline.to(camera.position, { z: 18, duration: DURATION_SUPERNOVA * 0.2, ease: "power3.in" }, "detonation");
+                
+                const shake = { strength: 0.3 };
+                stepTimeline.to(shake, {
+                    strength: 0, duration: 1.2,
+                    onUpdate: () => {
+                        camera.position.x += (Math.random() - 0.5) * shake.strength;
+                        camera.position.y += (Math.random() - 0.5) * shake.strength;
+                    }
+                }, "detonation");
+
+                stepTimeline.add(() => {
+                    const coreFlash = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending }));
+                    coreFlash.userData.isEffect = true; scene.add(coreFlash);
+                    gsap.to(coreFlash.scale, { x: 25, y: 25, z: 25, duration: 0.5, ease: "power2.out" });
+                    gsap.to(coreFlash.material, { opacity: 0, duration: 0.7, ease: "power2.out", onComplete: () => scene.remove(coreFlash) });
+                    
+                    const shockwaveColor = plan.isExothermic ? 0xffa500 : 0x87ceeb;
+                    const shockwave = new THREE.Mesh(new THREE.TorusGeometry(1, 0.2, 16, 100), new THREE.MeshBasicMaterial({ color: shockwaveColor, transparent: true, opacity: 0.8 }));
+                    shockwave.rotation.x = Math.PI / 2; shockwave.userData.isEffect = true; scene.add(shockwave);
+                    gsap.to(shockwave.scale, { x: 40, y: 40, z: 40, duration: 2.0, ease: "power1.out" });
+                    gsap.to(shockwave.material, { opacity: 0, duration: 2.0, ease: "power1.out", onComplete: () => scene.remove(shockwave) });
+                }, "detonation+=0.05");
+
+                stepTimeline.addLabel("supernova", "detonation+=0.2");
+                const detachedAtoms = scene.children.filter(c => c.userData && c.userData.isAtom);
+                
+                const ringGeo = new THREE.TorusGeometry(10, 0.15, 16, 100);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending });
+                const energyRing = new THREE.Mesh(ringGeo, ringMat);
+                energyRing.rotation.x = Math.PI / 2; energyRing.userData.isEffect = true; scene.add(energyRing);
+                stepTimeline.to(energyRing.scale, { x: 1.5, y: 1.5, z: 1.5, duration: DURATION_SUPERNOVA * 0.9, ease: "power1.out"}, "supernova")
+                stepTimeline.to(energyRing.material, { opacity: 0.7, duration: 1.5, ease: "power1.out" }, "supernova");
+                stepTimeline.to(energyRing.rotation, { z: "+=5", duration: DURATION_SUPERNOVA * 0.9 }, "supernova");
+                stepTimeline.to(energyRing.material, { opacity: 0, duration: 1.5, ease: "power1.in", onComplete: () => scene.remove(energyRing) }, `supernova+=${DURATION_SUPERNOVA*0.9 - 1.5}`);
+
+                detachedAtoms.forEach(atom => {
+                    stepTimeline.to(atom.position, {
+                        x: (Math.random() - 0.5) * 25, y: (Math.random() - 0.5) * 25, z: (Math.random() - 0.5) * 25,
+                        duration: DURATION_SUPERNOVA * 0.7, ease: "power2.out"
+                    }, "supernova");
+                    stepTimeline.to(atom.material.emissive, { r: 1.5, g: 1.5, b: 0.8, duration: DURATION_SUPERNOVA * 0.6, ease: "power2.in" }, "supernova");
+                });
+                break;
+            
+            case 'reform':
+                const DURATION_REFORM = step.duration;
+                stepTimeline.addLabel("reformation", "+=0");
+                const atomPool = {};
+                scene.children.filter(c => c.userData && c.userData.isAtom).forEach(atom => {
+                    const symbol = atom.userData.symbol;
+                    if (!atomPool[symbol]) atomPool[symbol] = [];
+                    atomPool[symbol].push(atom);
+                });
+
+                const totalProductInstances = plan.products.reduce((acc, p) => acc + (p.count * baseMultiplier), 0);
+                let productIndex = 0;
+
+                plan.products.forEach(p => {
+                    for (let j = 0; j < Math.max(1, p.count) * baseMultiplier; j++) {
+                        const angle = (productIndex / totalProductInstances) * Math.PI * 4;
+                        const radius = 5 + (productIndex / totalProductInstances) * 10;
+                        const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius, z = (Math.random() - 0.5) * 6;
+                        const productGroup = drawMolecule3D(p, x, y, z);
+                        
+                        productGroup.userData.moleculeData.drift = new THREE.Vector3((Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01, (Math.random() - 0.5) * 0.01);
+                        productGroup.userData.moleculeData.rotationSpeed = new THREE.Vector3((Math.random() - 0.5) * 0.005, (Math.random() - 0.5) * 0.005, (Math.random() - 0.5) * 0.005);
+                        productGroup.userData.moleculeData.originalAtomPositions = productGroup.userData.moleculeData.atoms.map(atom => atom.position.clone());
+                        productGroup.userData.moleculeData.vibrationParams = productGroup.userData.moleculeData.atoms.map(() => ({
+                            speed: 0.5 + Math.random() * 1.5, phase: Math.random() * Math.PI * 2, axis: new THREE.Vector3().randomDirection()
+                        }));
+
+                        productGroup.traverse(child => { if(child.isMesh) child.material.opacity = 0; });
+                        
+                        productGroup.userData.moleculeData.atoms.forEach(targetAtom => {
+                             const sourceAtom = atomPool[targetAtom.userData.symbol]?.pop();
+                             if(sourceAtom){
+                                 const targetWorldPos = new THREE.Vector3(); targetAtom.getWorldPosition(targetWorldPos);
+                                 stepTimeline.to(sourceAtom.position, { x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z, duration: DURATION_REFORM * 0.4, ease: "power3.inOut" }, "reformation");
+                                 stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION_REFORM * 0.4 }, "reformation");
+                                 stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION_REFORM * 0.4 }, "reformation");
+                                 stepTimeline.add(()=> scene.remove(sourceAtom), `reformation+=${DURATION_REFORM*0.4}`);
+                             }
+                        });
+
+                        productGroup.traverse(child => { if (child.isMesh) stepTimeline.to(child.material, { opacity: 1, duration: DURATION_REFORM * 0.3 }, `reformation+=${DURATION_REFORM*0.1}`); });
+                        productIndex++;
+                    }
+                });
+                Object.values(atomPool).flat().forEach(atom => stepTimeline.to(atom.material, {opacity: 0, duration: 0.5, onComplete: ()=> scene.remove(atom)}, 'reformation'));
+                break;
+
+            case 'aftermath':
+                const DURATION_AFTERMATH = step.duration;
+                stepTimeline.addLabel("breathing", "+=0");
+                molecules.forEach(group => {
+                    const emissiveTargets = group.userData.moleculeData.atoms.map(a => a.material.emissive);
+                    stepTimeline.to(emissiveTargets, { r: 0.8, g: 0.8, b: 0.4, duration: 1.5, yoyo: true, repeat: 5, ease: "sine.inOut" }, `breathing`);
+                });
+                const ambientLightFinal = scene.getObjectByName("ambientLight");
+                const directionalLightFinal = scene.getObjectByName("directionalLight");
+                if(ambientLightFinal) stepTimeline.to(ambientLightFinal, { intensity: 0.5, duration: DURATION_AFTERMATH }, "breathing");
+                if(directionalLightFinal) stepTimeline.to(directionalLightFinal, { intensity: 1.0, duration: DURATION_AFTERMATH }, "breathing");
+                stepTimeline.to(camera.position, { z: 25, duration: DURATION_AFTERMATH }, "breathing");
+                break;
+            
+            case 'gas_evolution':
+                stepTimeline.add(() => createGasBubbles(step.options || {}));
+                break;
+
+            case 'precipitation':
+                stepTimeline.add(() => createPrecipitationParticles(step.options || {}));
+                break;
         }
         
         mainTimeline.add(stepTimeline);
         mainTimeline.add(() => {
             if (isExplanationMode) {
                 mainTimeline.pause();
-                showExplanationModal(step.text || `Bước...`, step.explanation, index + 1);
+                showExplanationModal(step.text || `Bước...`, step.explanation, stepIndex + 1);
             } else { displayMessage(step.text || '...'); }
         }, ">");
     });
@@ -723,8 +726,7 @@ async function generateReactionPlan() {
     - "isExothermic": (boolean) Phản ứng có tỏa nhiệt không. Đây là trường BẮT BUỘC, vì nó quyết định hiệu ứng hình ảnh cuối cùng. Phải luôn là true hoặc false.
     - "reactants": (array) Mảng các đối tượng chất phản ứng.
     - "products": (array) Mảng các đối tượng sản phẩm.
-    - "animationSteps": (array) **KHÔNG CẦN TRƯỜNG NÀY NỮA**. Tôi sẽ tự tạo các bước animation. Bạn chỉ cần cung cấp đầy đủ thông tin về title, isExothermic, reactants, và products.
-
+    
     QUY TẮC CHO CHẤT PHẢN ỨNG VÀ SẢN PHẨM:
     Mỗi đối tượng chất phải có dạng: {molecule, name, count, molecularWeight, physicalState, atoms: [{symbol, color}], bonds: [...]}.
     **QUY TẮC TỐI QUAN TRỌNG**: Trường "bonds" là BẮT BUỘC cho TẤT CẢ các chất.
@@ -741,7 +743,6 @@ async function generateReactionPlan() {
         const textResponse = result.response.text();
         let plan;
         try {
-            // Robust JSON extraction using regex
             const jsonMatch = textResponse.match(/{[\s\S]*}/);
             if (!jsonMatch) {
                 throw new Error("Không tìm thấy đối tượng JSON trong phản hồi của AI.");
@@ -750,19 +751,24 @@ async function generateReactionPlan() {
             
             // Manually add animation steps since we removed it from the prompt
             plan.animationSteps = [
-                { type: "move_to_center", text: "Giai đoạn 1: Tụ Bão", explanation: "Các chất phản ứng được hút vào vùng trung tâm, tích tụ năng lượng." },
-                { type: "disintegrate", text: "Giai đoạn 2: Phân rã", explanation: "Các liên kết ban đầu bị phá vỡ, giải phóng các nguyên tử." },
-                { type: "maelstrom", text: "Giai đoạn 3: Hỗn Nguyên", explanation: "Các nguyên tử tự do được trộn lẫn trong một cơn lốc năng lượng." },
-                { type: "supernova", text: "Giai đoạn 4: Kích Nổ", explanation: "Năng lượng phản ứng được giải phóng trong một vụ nổ lớn." },
-                { type: "reform", text: "Giai đoạn 5: Tái tạo", explanation: "Các nguyên tử từ vụ nổ được tập hợp lại để hình thành sản phẩm mới." },
-                { type: "aftermath", text: "Giai đoạn 6: Dư Âm", explanation: "Các phân tử sản phẩm ổn định và giải phóng năng lượng dư thừa." }
+                { type: "move_to_center", duration: 3.5, text: "Giai đoạn 1: Tụ Bão", explanation: "Các chất phản ứng được hút vào vùng trung tâm, tích tụ năng lượng." },
+                { type: "disintegrate", duration: 1.5, text: "Giai đoạn 2: Phân rã", explanation: "Các liên kết ban đầu bị phá vỡ, giải phóng các nguyên tử." },
+                { type: "maelstrom", duration: 2.5, text: "Giai đoạn 3: Hỗn Nguyên", explanation: "Các nguyên tử tự do được trộn lẫn trong một cơn lốc năng lượng." },
+                { type: "supernova", duration: 2.0, text: "Giai đoạn 4: Kích Nổ", explanation: "Năng lượng phản ứng được giải phóng trong một vụ nổ lớn." },
+                { type: "reform", duration: 3.0, text: "Giai đoạn 5: Tái tạo", explanation: "Các nguyên tử từ vụ nổ được tập hợp lại để hình thành sản phẩm mới." },
+                { type: "aftermath", duration: 3.0, text: "Giai đoạn 6: Dư Âm", explanation: "Các phân tử sản phẩm ổn định và giải phóng năng lượng dư thừa." }
             ];
-             // Add special effects step if needed
-            const hasGas = plan.products.some(p => p.physicalState === 'gas');
-            const hasPrecipitate = plan.products.some(p => p.physicalState === 'solid' && plan.reactants.every(r => r.physicalState !== 'solid'));
-            if(hasGas) plan.animationSteps.push({type: 'gas_evolution'});
-            if(hasPrecipitate) plan.animationSteps.push({type: 'precipitation'});
+            
+            // **FIXED**: Automatically detect and add special effect steps
+            const gasProduct = plan.products.find(p => p.physicalState === 'gas');
+            const precipitateProduct = plan.products.find(p => p.physicalState === 'solid' && plan.reactants.every(r => r.physicalState !== 'solid'));
 
+            if (gasProduct) {
+                plan.animationSteps.push({ type: 'gas_evolution', text: "Sản phẩm khí được giải phóng.", options: {} });
+            }
+            if (precipitateProduct) {
+                plan.animationSteps.push({ type: 'precipitation', text: "Kết tủa được hình thành.", options: { color: precipitateProduct.atoms[0].color } });
+            }
 
         } catch (jsonError) {
             console.error("Lỗi parsing JSON:", jsonError, "Phản hồi thô:", textResponse);
