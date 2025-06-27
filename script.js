@@ -354,30 +354,34 @@ function toggleDragHint(show) {
  */
 function clearScene() {
     molecules.forEach(m => {
+        // Dispose geometries and materials of all children before removing the group
         m.children.forEach(c => {
             if (c.geometry) c.geometry.dispose();
             if (c.material) {
-                if (c.material.emissive) c.material.emissive.set(0x000000); // Ensure emissive is off
-                c.material.dispose();
+                if (Array.isArray(c.material)) {
+                    c.material.forEach(mat => mat.dispose());
+                } else {
+                    c.material.dispose();
+                }
             }
         });
         scene.remove(m);
     });
     // Also remove any existing gas bubbles and precipitation particles
-    scene.children.filter(obj => obj.userData.isGasBubble || obj.userData.isPrecipitationParticle).forEach(particle => {
+    scene.children.filter(obj => obj.userData.isGasBubble || obj.userData.isPrecipitationParticle || obj.userData.isTempFlash || obj.userData.isShockwave).forEach(particle => {
         if (particle.geometry) particle.geometry.dispose();
-        if (particle.material) particle.material.dispose();
+        if (particle.material) {
+            if (Array.isArray(particle.material)) {
+                particle.material.forEach(mat => mat.dispose());
+            } else {
+                particle.material.dispose();
+            }
+        }
         scene.remove(particle);
     });
-    molecules = [];
-
-    // Reset and hide solution container
-    if (solutionContainer) {
-        solutionContainer.material.color.set(0x000000); // Reset color to black (or clear color)
-        solutionContainer.material.opacity = 0.0; // Make it fully transparent
-        solutionContainer.visible = false; // Hide it
-    }
+    molecules = []; // Clear global array
 }
+
 
 /**
  * Draws a 3D molecule based on its definition, including atoms and bonds.
@@ -427,6 +431,8 @@ function drawMolecule3D(moleculeDef, x, y, z) {
         }
         atomMesh.position.set(localX, localY, localZ);
         atomMesh.userData.isAtom = true; // Mark as atom for raycasting
+        atomMesh.userData.atomSymbol = atomDef.symbol; // Store symbol for identification
+        atomMesh.userData.atomColor = atomDef.color; // Store color for identification
         group.add(atomMesh); // Add atom directly to the molecule group
         atomLocalPositions.push(new THREE.Vector3(localX, localY, localZ)); // Store local positions
         atomMeshes.push(atomMesh); // Store reference to mesh
@@ -466,6 +472,7 @@ function drawMolecule3D(moleculeDef, x, y, z) {
                     const segmentMesh = new THREE.Mesh(segmentGeometry, bondMaterial.clone());
                     segmentMesh.name = `bond-${bond.atom1Index}-${bond.atom2Index}-${i}`;
                     segmentMesh.userData.isBond = true; // Mark as bond
+                    segmentMesh.userData.bondType = bond.bondType; // Store bond type
 
                     segmentMesh.position.copy(midPoint);
                     segmentMesh.lookAt(atomB_local_pos); // Look at the target atom's local position
@@ -867,18 +874,22 @@ function runAnimation(plan) {
                     if (child.userData.isAtom) {
                         stepTimeline.to(child.material.emissive, { r: 1, g: 1, b: 0.8, duration: 0.3, ease: "power2.in" }, 0);
                         stepTimeline.to(child.material.emissive, { r: 0, g: 0, b: 0, duration: 0.7, ease: "power2.out" }, 0.3);
-                        // Make atom a child of the scene, detaching from its original molecule group
-                        // And store its global position for later use
+                        
+                        // Get atom's current global position before detaching
                         const globalPos = new THREE.Vector3();
-                        child.getWorldPosition(globalPos); // Get current global position
-                        scene.attach(child); // Detach from parent group and attach to scene directly
-                        child.position.copy(globalPos); // Set its position to its current global position
+                        child.getWorldPosition(globalPos);
+
+                        // Detach atom from its molecule group and add directly to the scene
+                        if (child.parent) child.parent.remove(child);
+                        scene.add(child);
+                        child.position.copy(globalPos); // Maintain its global position
+
                         dispersedAtoms.push(child); // Add to the list of dispersed atoms
                     } else if (child.userData.isBond) {
                         // Animate bond "snap" and fade out, then remove
                         stepTimeline.to(child.scale, { x: 0.2, y: 0.2, z: 0.2, duration: 0.3, ease: "power1.in" }, 0);
                         stepTimeline.to(child.material, { opacity: 0, duration: 0.5, ease: "power1.out", onComplete: () => {
-                            if (child.parent) child.parent.remove(child); // Ensure it's removed from its parent
+                            if (child.parent) child.parent.remove(child);
                             child.geometry.dispose();
                             child.material.dispose();
                         }}, 0.1);
@@ -886,14 +897,20 @@ function runAnimation(plan) {
                 });
                 // Remove the original empty molecule group after its children are detached/removed
                 stepTimeline.add(() => {
-                    scene.remove(m.obj);
+                    if (m.obj.parent) m.obj.parent.remove(m.obj); // Ensure the group is removed from scene
                     m.obj.children.forEach(c => { // Dispose any remaining children if any
                         if (c.geometry) c.geometry.dispose();
-                        if (c.material) c.material.dispose();
+                        if (c.material) {
+                            if (Array.isArray(c.material)) {
+                                c.material.forEach(mat => mat.dispose());
+                            } else {
+                                c.material.dispose();
+                            }
+                        }
                     });
                 }, ">-0.2"); // A bit before the atom movements complete
             });
-            // Update global molecules array to only contain the newly dispersed atoms
+            // Update global 'molecules' array to only contain the newly dispersed atoms
             molecules = dispersedAtoms;
 
             // Animate dispersed atoms to new scattered positions
@@ -909,21 +926,12 @@ function runAnimation(plan) {
             });
 
         } else if (step.type === 'rearrange') {
-            // Quickly fade out any lingering emissive glow from all atoms in the scene
-            stepTimeline.to(molecules.filter(obj => obj.userData.isAtom),
-                {
-                    'material.emissive.r': 0,
-                    'material.emissive.g': 0,
-                    'material.emissive.b': 0,
-                    duration: 0.1
-                }, 0);
-
-            // Clean up any remaining dispersed atoms from the previous step
+            // Clean up any remaining dispersed atoms from the previous step that were not used for products
             stepTimeline.add(() => {
-                molecules.filter(obj => obj.userData.isAtom).forEach(atom => {
-                    scene.remove(atom);
-                    atom.geometry.dispose();
-                    atom.material.dispose();
+                molecules.forEach(atom => { // 'molecules' now holds the dispersed atoms
+                    if (atom.parent) scene.remove(atom);
+                    if (atom.geometry) atom.geometry.dispose();
+                    if (atom.material) atom.material.dispose();
                 });
                 molecules = []; // Clear molecules array
             }, 0); // Execute immediately at the start of this step
@@ -933,6 +941,7 @@ function runAnimation(plan) {
                     const flashGeo = new THREE.SphereGeometry(0.1, 16, 16);
                     const flashMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 1, blending: THREE.AdditiveBlending });
                     const flash = new THREE.Mesh(flashGeo, flashMat);
+                    flash.userData.isTempFlash = true; // Mark for cleanup
                     scene.add(flash);
                     gsap.timeline()
                         .to(flash.scale, { x: 5, y: 5, z: 5, duration: 0.2, ease: "power2.out" })
@@ -942,6 +951,7 @@ function runAnimation(plan) {
                     const shockwaveMat = new THREE.MeshBasicMaterial({ color: 0xffffee, transparent: true, opacity: 1 });
                     const shockwave = new THREE.Mesh(shockwaveGeo, shockwaveMat);
                     shockwave.rotation.x = Math.PI / 2;
+                    shockwave.userData.isShockwave = true; // Mark for cleanup
                     scene.add(shockwave);
                     gsap.to(shockwave.scale, { x: 20, y: 20, z: 20, duration: 2, ease: "power1.out" });
                     gsap.to(shockwave.material, { opacity: 0, duration: 2, ease: "power1.out", onComplete: () => scene.remove(shockwave) });
@@ -952,8 +962,7 @@ function runAnimation(plan) {
 
             plan.products.forEach(p => {
                 for (let j = 0; j < p.count; j++) {
-                    // Create a brand new product molecule group using drawMolecule3D
-                    // Initially place it at a central, slightly randomized location
+                    // Create a brand new product molecule group. drawMolecule3D already adds it to the scene.
                     const initialProductX = (Math.random() - 0.5) * 2;
                     const initialProductY = (Math.random() - 0.5) * 2;
                     const initialProductZ = (Math.random() - 0.5) * 2;
@@ -985,6 +994,9 @@ function runAnimation(plan) {
                         } else if (c.userData.isBond) {
                             stepTimeline.to(c.material, { opacity: 1, duration: 1 }, "<"); // Fade in bonds
                             stepTimeline.to(c.scale, { x: 1, y: 1, z: 1, duration: 1.5, ease: "back.out(1.7)" }, "<"); // Grow bonds
+                            // Brief glow for new bonds/atoms
+                            stepTimeline.to(c.material.emissive, { r: 0.3, g: 0.3, b: 0.3, duration: 0.2 }, "<");
+                            stepTimeline.to(c.material.emissive, { r: 0, g: 0, b: 0, duration: 0.5 }, ">");
                         }
                     });
 
