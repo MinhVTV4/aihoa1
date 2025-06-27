@@ -926,47 +926,32 @@ function runAnimation(plan) {
                 });
             });
         } else if (step.type === 'rearrange') {
-            // =================================================================
-            // START: REARRANGE LOGIC FIX
-            // =================================================================
-            
-            // Quickly fade out any lingering emissive glow from all atoms
-            const allCurrentAtoms = scene.children.flatMap(obj =>
-                (obj.isGroup && obj.userData.moleculeData) ? obj.children.filter(c => c.userData.isAtom) : []
-            );
-            stepTimeline.to(allCurrentAtoms.map(a => a.material.emissive), {
-                r: 0, g: 0, b: 0,
-                duration: 0.1
-            }, 0);
+            // Quickly fade out any lingering emissive glow from all atoms in the scene
+            stepTimeline.to(scene.children.flatMap(obj => {
+                if (obj.isGroup && obj.userData.moleculeData) { // Filter for molecule groups
+                    return obj.children.filter(c => c.userData.isAtom); // Get atoms within groups
+                }
+                return [];
+            }),
+                {
+                    'material.emissive.r': 0,
+                    'material.emissive.g': 0,
+                    'material.emissive.b': 0,
+                    duration: 0.1 // Very quick fade to turn off glow
+                }, 0); // Start at the very beginning of this stepTimeline
 
             // Store all individual atoms from reactants after bond breaking
             const individualReactantAtoms = [];
             reactantObjects.forEach(m => {
-                const atomsInGroup = m.obj.children.filter(child => child.userData.isAtom);
-
-                // For each atom, get its world position, then add it back to the main scene
-                atomsInGroup.forEach(atom => {
-                    const worldPosition = new THREE.Vector3();
-                    atom.getWorldPosition(worldPosition); // Get position before it's removed
-                    scene.add(atom); // This automatically removes it from the parent group
-                    atom.position.copy(worldPosition); // Set its position in world space
-                    individualReactantAtoms.push(atom);
+                m.obj.children.forEach(child => {
+                    if (child.userData.isAtom) {
+                        individualReactantAtoms.push(child);
+                    } else if (child.userData.isBond) {
+                        // Fade out bonds and remove them. They are already small from break_bonds.
+                        stepTimeline.to(child.material, { opacity: 0, duration: 0.5, onComplete: () => scene.remove(child) }, 0);
+                    }
                 });
-
-                // Animate out and remove the old bonds that are still in the group
-                m.obj.children.filter(child => child.userData.isBond).forEach(bondMesh => {
-                    stepTimeline.to(bondMesh.material, {
-                        opacity: 0, duration: 0.3,
-                        onComplete: () => {
-                            bondMesh.geometry.dispose();
-                            bondMesh.material.dispose();
-                            m.obj.remove(bondMesh);
-                        }
-                    }, 0);
-                });
-
-                // Remove the old, now empty, molecule group from the scene
-                scene.remove(m.obj);
+                scene.remove(m.obj); // Remove the old molecule group, atoms are now individual
             });
             molecules = []; // Clear the global molecules array as they are now individual atoms
 
@@ -989,130 +974,152 @@ function runAnimation(plan) {
                     scene.add(shockwave);
                     gsap.to(shockwave.scale, { x: 20, y: 20, z: 20, duration: 2, ease: "power1.out" });
                     gsap.to(shockwave.material, { opacity: 0, duration: 2, ease: "power1.out", onComplete: () => scene.remove(shockwave) });
-                }, 0.5);
+                }, 0.5); // Relative to start of stepTimeline
+
             }
 
             let currentAtomIndex = 0;
-            let productSpawnOffset = -5 * (plan.products.reduce((acc, p) => acc + p.count, 0) - 1) / 2; // Center products
+            let productSpawnOffset = -5; // Initial X offset for placing product molecules
 
             plan.products.forEach(p => {
                 for (let j = 0; j < p.count; j++) {
-                    // 1. Create a new THREE.Group for the product molecule and position it
-                    const productGroup = new THREE.Group();
-                    productGroup.position.set(productSpawnOffset, (j % 2 === 0 ? 1 : -1) * 3, 0);
-                    scene.add(productGroup);
-                    molecules.push(productGroup); // Add to global molecules array for tracking
-
                     const productAtoms = [];
-                    const finalLocalPositions = [];
-                    const bondMeshes = [];
-
-                    // 2. For each atom in the product, assign an existing individual reactant atom
-                    p.atoms.forEach((atomDef, k) => {
+                    // For each atom in the product, assign an existing individual reactant atom
+                    for (let k = 0; k < p.atoms.length; k++) {
                         if (currentAtomIndex < individualReactantAtoms.length) {
-                            const atom = individualReactantAtoms[currentAtomIndex++];
-                            productAtoms.push(atom);
-                            
-                            // Calculate the atom's FINAL LOCAL position inside the new group
-                            const angle = (k / p.atoms.length) * 2 * Math.PI;
-                            const spreadRadius = 0.5 * 1.5;
-                            const finalLocalPos = new THREE.Vector3(
-                                Math.cos(angle) * spreadRadius,
-                                Math.sin(angle) * spreadRadius,
-                                (Math.random() - 0.5) * 0.25
-                            );
-                            finalLocalPositions.push(finalLocalPos);
+                            productAtoms.push(individualReactantAtoms[currentAtomIndex++]);
+                        } else {
+                            // Fallback if not enough original atoms (shouldn't happen with balanced reactions)
+                            console.warn("Not enough individual atoms for product creation. Creating new atom mesh.");
+                            const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+                            const material = new THREE.MeshStandardMaterial({
+                                color: new THREE.Color(p.atoms[k].color),
+                                metalness: 0.4,
+                                roughness: 0.4,
+                                emissive: new THREE.Color(0x000000)
+                            });
+                            const newAtomMesh = new THREE.Mesh(geometry, material);
+                            scene.add(newAtomMesh); // Add to scene if newly created
+                            productAtoms.push(newAtomMesh);
                         }
+                    }
+
+                    // Create a new THREE.Group for the product molecule
+                    const productGroup = new THREE.Group();
+                    productGroup.userData.moleculeData = {
+                        molecule: p.molecule,
+                        name: p.name,
+                        molecularWeight: p.molecularWeight,
+                        physicalState: p.physicalState,
+                        atoms: [], // Will store actual atom mesh references
+                        bonds: p.bonds,
+                        bondMeshes: [] // Will store actual bond mesh references
+                    };
+                    scene.add(productGroup); // Add the new product group to the scene
+                    molecules.push(productGroup); // Add to global molecules array
+
+                    // Position atoms relative to the new product group's center
+                    const productCenter = new THREE.Vector3(productSpawnOffset, (j % 2 === 0 ? 1 : -1) * 3, 0);
+
+                    productAtoms.forEach((atom, k) => {
+                        // Move atom from its current dispersed position to its new position within the product molecule
+                        const atomDef = p.atoms[k];
+                        const angle = (k / p.atoms.length) * 2 * Math.PI;
+                        const spreadRadius = 0.5 * 1.5; // Distance from center of product molecule for atoms
+                        const targetAtomX = productCenter.x + Math.cos(angle) * spreadRadius;
+                        const targetAtomY = productCenter.y + Math.sin(angle) * spreadRadius;
+                        const targetAtomZ = productCenter.z + (Math.random() - 0.5) * 0.5 * 0.5;
+
+                        stepTimeline.to(atom.position, {
+                            x: targetAtomX,
+                            y: targetAtomY,
+                            z: targetAtomZ,
+                            duration: 1.5,
+                            ease: "power2.inOut"
+                        }, ">-0.5"); // Stagger movement slightly
+
+                        // Fade in atom material opacity
+                        stepTimeline.to(atom.material, { opacity: 1, duration: 1 }, "<");
+                        // Set the atom's color to the product atom color
+                        stepTimeline.to(atom.material.color, {
+                            r: new THREE.Color(atomDef.color).r,
+                            g: new THREE.Color(atomDef.color).g,
+                            b: new THREE.Color(atomDef.color).b,
+                            duration: 0.5
+                        }, "<"); // Change color when moving to new position
+
+                        productGroup.add(atom); // Add atom to the product group
+                        productGroup.userData.moleculeData.atoms.push(atom); // Store in new group's data
                     });
 
-                    // 3. Create new bonds based on the STABLE final local positions
+                    // Create and animate new bonds
                     if (p.bonds && p.bonds.length > 0) {
-                        p.bonds.forEach(bondDef => {
-                            const posA = finalLocalPositions[bondDef.atom1Index];
-                            const posB = finalLocalPositions[bondDef.atom2Index];
+                        p.bonds.forEach(bond => {
+                            const atomA = productAtoms[bond.atom1Index];
+                            const atomB = productAtoms[bond.atom2Index];
 
-                            if (posA && posB) {
-                                const bondThickness = 0.1;
-                                const distance = posA.distanceTo(posB);
-                                const midPoint = new THREE.Vector3().addVectors(posA, posB).divideScalar(2);
-                                const direction = new THREE.Vector3().subVectors(posB, posA).normalize();
+                            if (atomA && atomB) {
+                                const positionA = atomA.position;
+                                const positionB = atomB.position;
+
+                                const distance = positionA.distanceTo(positionB);
+                                const midPoint = new THREE.Vector3().addVectors(positionA, positionB).divideScalar(2);
+
+                                const direction = new THREE.Vector3().subVectors(positionB, positionA).normalize();
                                 let perpendicular = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
                                 if (perpendicular.lengthSq() < 0.0001) {
                                     perpendicular.set(1, 0, 0);
                                     perpendicular.crossVectors(direction, perpendicular).normalize();
                                 }
-                                
+
                                 let bondSegments = 1;
                                 let offsetDistance = 0;
-                                switch (bondDef.bondType) {
-                                    case 'double': bondSegments = 2; offsetDistance = bondThickness * 0.5; break;
-                                    case 'triple': bondSegments = 3; offsetDistance = bondThickness * 0.7; break;
+
+                                switch (bond.bondType) {
+                                    case 'single': bondSegments = 1; offsetDistance = 0; break;
+                                    case 'double': bondSegments = 2; offsetDistance = 0.1 * 0.5; break;
+                                    case 'triple': bondSegments = 3; offsetDistance = 0.1 * 0.7; break;
                                 }
 
                                 for (let i = 0; i < bondSegments; i++) {
-                                    const segmentGeometry = new THREE.CylinderGeometry(bondThickness, bondThickness, distance, 8);
+                                    const segmentGeometry = new THREE.CylinderGeometry(0.1, 0.1, distance, 8);
                                     const segmentMaterial = new THREE.MeshStandardMaterial({
-                                        color: 0xcccccc, metalness: 0.2, roughness: 0.6,
-                                        transparent: true, opacity: 0
+                                        color: 0xcccccc,
+                                        metalness: 0.2,
+                                        roughness: 0.6,
+                                        transparent: true,
+                                        opacity: 0 // Start invisible
                                     });
                                     const segmentMesh = new THREE.Mesh(segmentGeometry, segmentMaterial);
+                                    segmentMesh.userData.isBond = true;
+
                                     segmentMesh.position.copy(midPoint);
-                                    segmentMesh.lookAt(posB);
+                                    segmentMesh.lookAt(positionB);
                                     segmentMesh.rotation.x += Math.PI / 2;
+
                                     if (bondSegments > 1) {
                                         const currentOffset = (i - (bondSegments - 1) / 2) * offsetDistance;
                                         segmentMesh.position.add(perpendicular.clone().multiplyScalar(currentOffset));
                                     }
+                                    
                                     productGroup.add(segmentMesh);
-                                    bondMeshes.push(segmentMesh);
+                                    productGroup.userData.moleculeData.bondMeshes.push(segmentMesh);
+
+                                    // Animate bond appearance and glow
+                                    stepTimeline.fromTo(segmentMesh.scale, { x: 0.001, y: 0.001, z: 0.001 }, { x: 1, y: 1, z: 1, duration: 0.8, ease: "back.out(1.7)" }, ">-1"); // Grow bonds
+                                    stepTimeline.to(segmentMesh.material, { opacity: 1, duration: 0.5 }, "<"); // Fade in bond opacity
+                                    // Brief glow for new bonds
+                                    stepTimeline.to(atomA.material.emissive, { r: 0.5, g: 0.5, b: 0.5, duration: 0.2 }, "<");
+                                    stepTimeline.to(atomB.material.emissive, { r: 0.5, g: 0.5, b: 0.5, duration: 0.2 }, "<");
+                                    stepTimeline.to(atomA.material.emissive, { r: 0, g: 0, b: 0, duration: 0.5 }, ">");
+                                    stepTimeline.to(atomB.material.emissive, { r: 0, g: 0, b: 0, duration: 0.5 }, "<");
                                 }
                             }
                         });
                     }
-                    
-                    // 4. Animate atoms moving to their final WORLD positions & change their colors
-                    productAtoms.forEach((atom, k) => {
-                        const targetWorldPos = new THREE.Vector3();
-                        productGroup.localToWorld(finalLocalPositions[k].clone(), targetWorldPos);
-
-                        stepTimeline.to(atom.position, {
-                            x: targetWorldPos.x, y: targetWorldPos.y, z: targetWorldPos.z,
-                            duration: 1.5, ease: "power2.inOut",
-                            onComplete: () => {
-                                // After moving, formally attach atom to group.
-                                // Its position will be converted to local automatically.
-                                productGroup.add(atom);
-                            }
-                        }, ">-1.2");
-
-                        // Animate color change
-                        const newColor = new THREE.Color(p.atoms[k].color);
-                        stepTimeline.to(atom.material.color, {
-                            r: newColor.r, g: newColor.g, b: newColor.b,
-                            duration: 0.5
-                        }, "<");
-                    });
-                    
-                    // 5. Animate new bonds fading in
-                    bondMeshes.forEach(bondMesh => {
-                        stepTimeline.to(bondMesh.material, { opacity: 1, duration: 0.5 }, ">-0.8");
-                        // Glow effect for new bond formation
-                        stepTimeline.to(bondMesh.material.emissive, { r: 0.5, g: 0.5, b: 0.5, duration: 0.2, yoyo: true, repeat: 1 }, "<");
-                    });
-
-                    // 6. Finalize product group data for tooltips
-                    productGroup.userData.moleculeData = {
-                        molecule: p.molecule, name: p.name,
-                        molecularWeight: p.molecularWeight, physicalState: p.physicalState,
-                        atoms: productAtoms, bonds: p.bonds, bondMeshes: bondMeshes
-                    };
-
-                    productSpawnOffset += 6; // Offset for next product molecule
+                    productSpawnOffset += 5; // Offset for next product molecule
                 }
             });
-            // =================================================================
-            // END: REARRANGE LOGIC FIX
-            // =================================================================
         } else if (step.type === 'gas_evolution') { // Handle gas evolution step
             stepTimeline.add(() => {
                 createGasBubbles(step);
@@ -1275,19 +1282,13 @@ async function generateReactionPlan() {
         const result = await model.generateContent(prompt);
         const textResponse = result.response.text();
         
+        // Try to clean and parse JSON
+        const cleanedText = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
         let plan;
         try {
-            // Improved JSON extraction
-            const startIndex = textResponse.indexOf('{');
-            const endIndex = textResponse.lastIndexOf('}');
-            if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
-                throw new Error("Không tìm thấy đối tượng JSON hợp lệ trong phản hồi.");
-            }
-            const jsonString = textResponse.substring(startIndex, endIndex + 1);
-            plan = JSON.parse(jsonString);
+            plan = JSON.parse(cleanedText);
         } catch (jsonError) {
             console.error("JSON parsing error:", jsonError);
-            console.error("Raw AI Response:", textResponse); // Log for debugging
             throw new Error("Phản hồi của AI không phải là JSON hợp lệ. Vui lòng thử lại.");
         }
 
