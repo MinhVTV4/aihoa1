@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engine Hóa học AI v3.0 - Nhà Hóa học AI</title>
+    <!-- Link to Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Link to Inter font from Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Link to external CSS file -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="simulation-container">
+        <h1 class="text-2xl font-bold text-center mb-4">Nhà Hóa học AI v3.0</h1>
+        <div id="reaction-chamber">
+            <!-- WebGL error message will be inserted here if needed -->
+            <!-- New: Drag hint for 3D interaction -->
+            <div id="drag-hint">Kéo để xoay</div>
+
+            <!-- NEW: Explanation Modal Overlay (inside reaction-chamber for positioning) -->
+            <div id="explanation-modal-overlay" class="explanation-modal-overlay">
+                <div class="explanation-box">
+                    <h3 id="explanation-title">Bước 1: Di chuyển vào trung tâm</h3>
+                    <p id="explanation-text">Các phân tử chất phản ứng di chuyển lại gần nhau, chuẩn bị cho quá trình va chạm và phản ứng.</p>
+                    <button id="explanation-continue-btn" class="explanation-continue-btn">Tiếp tục</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- NEW: Atom Color Legend Section - Moved here -->
+        <div id="atom-legend" class="atom-legend">
+            <div class="atom-legend-header" id="atom-legend-header">
+                <span>Chú thích màu nguyên tử</span>
+                <span class="atom-legend-toggle">▼</span>
+            </div>
+            <div class="atom-legend-content" id="atom-legend-content">
+                <!-- Atom items will be dynamically inserted here -->
+            </div>
+        </div>
+
+        <div class="ui-panel">
+            <div class="input-group">
+                <textarea id="equation-input" rows="3" placeholder="Nhập các chất tham gia (vd: H2 + O2), hoặc phương trình (vd: 2H2 + O2 -> 2H2O), hoặc mô tả (vd: Phản ứng đốt cháy Metan)..."></textarea>
+                <button id="clear-input-btn" class="clear-input-btn hidden">✖</button>
+                <button id="generate-btn" class="main-btn">
+                    Tạo Phản ứng
+                    <div id="loading-spinner" class="spinner hidden"></div>
+                </button>
+                <div id="suggestions-list" class="suggestions-list"></div>
+            </div>
+             <div id="controls-bar">
+                <button id="play-pause-btn" class="icon-btn" disabled>▶️</button>
+                <button id="restart-btn" class="icon-btn" disabled>🔄</button>
+                
+                <!-- NEW: Explanation Mode Toggle Button -->
+                <button id="explanation-mode-toggle" class="icon-btn">📚</button>
+
+                <div class="speed-control-group">
+                    <button class="speed-btn" data-speed="0.5" disabled>0.5x</button>
+                    <button class="speed-btn active" data-speed="1" disabled>1x</button>
+                    <button class="speed-btn" data-speed="2" disabled>2x</button>
+                </div>
+
+                <div id="progress-container">
+                    <div id="progress-bar"></div>
+                </div>
+            </div>
+            <input type="range" id="timeline-slider" min="0" max="100" value="0" disabled>
+
+            <p id="info-text">Hãy xem AI dự đoán và diễn họa phản ứng hóa học!</p>
+        </div>
+    </div>
+
+    <!-- Welcome Modal -->
+    <div id="welcome-modal-overlay" class="modal-overlay">
+        <div class="welcome-modal">
+            <h2>Chào mừng đến với Nhà Hóa học AI v3.0!</h2>
+            <p>Khám phá thế giới hóa học sống động với sức mạnh của AI.</p>
+            <p>Nhập các chất tham gia hoặc một phương trình hóa học vào ô bên dưới, sau đó nhấn "Tạo Phản ứng" để xem AI diễn họa quá trình!</p>
+            <p>Bạn cũng có thể kéo để xoay buồng phản ứng 3D và sử dụng các điều khiển bên dưới để tùy chỉnh hoạt ảnh.</p>
+            <button id="modal-close-btn" class="modal-close-btn">Bắt đầu ngay!</button>
+        </div>
+    </div>
+
+    <!-- Molecule Tooltip -->
+    <div id="molecule-tooltip"></div>
+
+    <!-- Imports for 3D and animation libraries -->
+    <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/" } }</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <!-- Link to external JavaScript file -->
+    <script type="module" src="script.js"></script>
+</body>
+</html>
