@@ -509,7 +509,7 @@ function runAnimation(plan) {
             let productIndex = 0;
             plan.products.forEach(p => {
                 for (let j = 0; j < Math.max(1, p.count) * baseMultiplier; j++) {
-                    // **FIXED**: Vị trí sản phẩm được xếp theo hình tròn/xoắn ốc
+                    // **FIXED**: Product positions are arranged in a circular/spiral pattern
                     const angle = (productIndex / totalProductInstances) * Math.PI * 4; // Use more than 2PI for a spiral
                     const radius = 3 + (productIndex / totalProductInstances) * 7; // Radius grows outwards
                     const x = Math.cos(angle) * radius;
@@ -625,25 +625,32 @@ async function generateReactionPlan() {
     toggleDragHint(false);
     updateAtomLegend(null);
 
-    // PROMPT ĐÃ ĐƯỢC CẬP NHẬT để đơn giản hóa cấu trúc animation
+    // **FIXED**: Stricter and more robust prompt
     const prompt = `
-    Từ các chất tham gia: "${userInput}".
+    Từ các chất tham gia do người dùng cung cấp: "${userInput}".
     Hãy tạo một kịch bản hoạt ảnh JSON.
-    1. Dự đoán sản phẩm và cân bằng phương trình.
-    2. Tạo đối tượng JSON theo cấu trúc sau:
-    - "title": (string) Phương trình hóa học.
-    - "isExothermic": (boolean) Phản ứng có tỏa nhiệt không (quan trọng cho hiệu ứng).
-    - "reactants": (array) Mảng các chất phản ứng {molecule, name, count, molecularWeight, physicalState, atoms: [{symbol, color}], bonds: [...]}.
-    - "products": (array) Mảng các sản phẩm, cấu trúc tương tự.
-    - "animationSteps": (array) Một mảng các bước. **QUAN TRỌNG**: Luôn tạo ra đúng 2 bước ĐẦU TIÊN, và bước thứ 3 là tùy chọn:
+    1. Dự đoán sản phẩm hóa học và cân bằng phương trình.
+    2. Tạo đối tượng JSON theo cấu trúc được yêu cầu nghiêm ngặt dưới đây.
+
+    CẤU TRÚC JSON:
+    - "title": (string) Phương trình hóa học đầy đủ.
+    - "isExothermic": (boolean) Phản ứng có tỏa nhiệt không.
+    - "reactants": (array) Mảng các đối tượng chất phản ứng.
+    - "products": (array) Mảng các đối tượng sản phẩm.
+    - "animationSteps": (array) Một mảng các bước hoạt ảnh.
+
+    QUY TẮC CHO CHẤT PHẢN ỨNG VÀ SẢN PHẨM:
+    Mỗi đối tượng chất phải có dạng: {molecule, name, count, molecularWeight, physicalState, atoms: [{symbol, color}], bonds: [...]}.
+    **QUY TẮC QUAN TRỌNG NHẤT**: Trường "bonds" là BẮT BUỘC cho TẤT CẢ các chất trong "reactants" và "products".
+    - Nếu chất có nhiều hơn một nguyên tử, "bonds" phải là một mảng các đối tượng liên kết. Ví dụ: {atom1Index: 0, atom2Index: 1, bondType: 'single'}.
+    - Nếu chất chỉ có MỘT nguyên tử (ví dụ: Fe, Na, Cu), "bonds" PHẢI là một mảng rỗng: "bonds": [].
+    - TUYỆT ĐỐI không được bỏ qua trường "bonds".
+
+    QUY TẮC CHO ANIMATION STEPS:
+    Luôn tạo ra đúng 2 bước ĐẦU TIÊN, và bước thứ 3 là tùy chọn:
         1. { "type": "move_to_center", "text": "Các chất phản ứng di chuyển vào trung tâm.", "explanation": "Các phân tử cần đến gần nhau để có thể tương tác và bắt đầu phản ứng." }
         2. { "type": "rearrange", "text": "Phá vỡ liên kết cũ và hình thành liên kết mới.", "explanation": "Năng lượng va chạm phá vỡ các liên kết hóa học hiện có. Các nguyên tử sau đó tự sắp xếp lại thành các cấu trúc bền vững hơn, tạo thành sản phẩm." }
         3. (Tùy chọn) Thêm MỘT bước hiệu ứng đặc biệt như 'gas_evolution', 'precipitation', hoặc 'color_change' nếu nó thực sự xảy ra trong phản ứng.
-    
-    Ví dụ cho "H2 + O2":
-    { ... "animationSteps": [{"type": "move_to_center", ...}, {"type": "rearrange", ...}] }
-    Ví dụ cho "AgNO3 + NaCl":
-    { ... "animationSteps": [{"type": "move_to_center", ...}, {"type": "rearrange", ...}, {"type": "precipitation", "color": "#FFFFFF", ...}] }
 
     Sử dụng các màu sau cho nguyên tử: H: #FFFFFF, O: #FF6B6B, C: #333333, N: #6B9AFF, Fe: #A19D94, S: #FFF36B, Cl: #6BFF8B, Na: #B06BFF, ...
     Chỉ trả lời bằng một khối mã JSON hợp lệ duy nhất.
