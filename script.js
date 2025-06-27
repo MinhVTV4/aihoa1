@@ -294,7 +294,8 @@ function drawMolecule3D(moleculeDef, x, y, z) {
     });
 
     const bondMeshes = [];
-    if (moleculeDef.bonds) {
+    // Ensure bonds array exists before iterating
+    if (moleculeDef.bonds && Array.isArray(moleculeDef.bonds)) {
         moleculeDef.bonds.forEach(bond => {
             const atomA = atomMeshes[bond.atom1Index];
             const atomB = atomMeshes[bond.atom2Index];
@@ -509,9 +510,8 @@ function runAnimation(plan) {
             let productIndex = 0;
             plan.products.forEach(p => {
                 for (let j = 0; j < Math.max(1, p.count) * baseMultiplier; j++) {
-                    // **FIXED**: Product positions are arranged in a circular/spiral pattern
-                    const angle = (productIndex / totalProductInstances) * Math.PI * 4; // Use more than 2PI for a spiral
-                    const radius = 3 + (productIndex / totalProductInstances) * 7; // Radius grows outwards
+                    const angle = (productIndex / totalProductInstances) * Math.PI * 4;
+                    const radius = 3 + (productIndex / totalProductInstances) * 7;
                     const x = Math.cos(angle) * radius;
                     const y = Math.sin(angle) * radius;
                     const z = (Math.random() - 0.5) * 5;
@@ -547,17 +547,20 @@ function runAnimation(plan) {
                         }
                     });
                      
+                    // **FIXED**: Pulse animation logic made more robust
                     if (plan.isExothermic) {
-                        stepTimeline.add(() => {
+                        const createPulse = () => {
                             const pulseGeo = new THREE.SphereGeometry(0.1, 16, 16);
-                            const color = 0xffa500;
-                            const pulseMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, blending: THREE.AdditiveBlending });
+                            const pulseMat = new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, blending: THREE.AdditiveBlending });
                             const pulse = new THREE.Mesh(pulseGeo, pulseMat);
                             pulse.userData.isEffect = true;
-                            productGroup.add(pulse);
-                            gsap.to(pulse.scale, { x: 30, y: 30, z: 30, duration: 1.2, ease: "power1.out" });
-                            gsap.to(pulse.material, { opacity: 0, duration: 1.2, ease: "power1.out", onComplete: () => productGroup.remove(pulse) });
-                        }, "reform+=" + DURATION);
+                            productGroup.add(pulse); // Add to group to be at the molecule's center
+                            
+                            gsap.timeline()
+                                .to(pulse.scale, { x: 30, y: 30, z: 30, duration: 1.2, ease: "power1.out" }, 0)
+                                .to(pulse.material, { opacity: 0, duration: 1.2, ease: "power1.out", onComplete: () => productGroup.remove(pulse) }, 0.1);
+                        };
+                        stepTimeline.add(createPulse, "reform+=" + DURATION);
                     }
                     productIndex++;
                 }
@@ -634,7 +637,7 @@ async function generateReactionPlan() {
 
     CẤU TRÚC JSON:
     - "title": (string) Phương trình hóa học đầy đủ.
-    - "isExothermic": (boolean) Phản ứng có tỏa nhiệt không.
+    - "isExothermic": (boolean) Phản ứng có tỏa nhiệt không. Đây là trường BẮT BUỘC, vì nó quyết định hiệu ứng hình ảnh cuối cùng.
     - "reactants": (array) Mảng các đối tượng chất phản ứng.
     - "products": (array) Mảng các đối tượng sản phẩm.
     - "animationSteps": (array) Một mảng các bước hoạt ảnh.
@@ -661,7 +664,7 @@ async function generateReactionPlan() {
         const textResponse = result.response.text();
         let plan;
         try {
-            // **FIXED**: Robust JSON extraction using regex
+            // Robust JSON extraction using regex
             const jsonMatch = textResponse.match(/{[\s\S]*}/);
             if (!jsonMatch) {
                 throw new Error("Không tìm thấy đối tượng JSON trong phản hồi của AI.");
@@ -813,4 +816,3 @@ function updateAtomLegend(plan) {
 showWelcomeModal();
 atomLegendContent.classList.remove('expanded');
 atomLegendToggle.style.transform = 'rotate(0deg)';
-
