@@ -504,14 +504,21 @@ function runAnimation(plan) {
             // --- Phase 3 & 4: Reformation & Stabilization ---
             stepTimeline.addLabel("reform", "chaos+=" + DURATION * 0.7);
             const atomPool = [...detachedAtoms];
-            let totalProductCount = plan.products.reduce((acc,p) => acc + (p.count * baseMultiplier), 0);
-            let productSpawnOffset = -10 * (totalProductCount - 1) / 2;
-
+            const totalProductInstances = plan.products.reduce((acc, p) => acc + (p.count * baseMultiplier), 0);
+            
+            let productIndex = 0;
             plan.products.forEach(p => {
                 for (let j = 0; j < Math.max(1, p.count) * baseMultiplier; j++) {
-                    const productGroup = drawMolecule3D(p, productSpawnOffset, (Math.random() - 0.5) * 4, 0);
-                    productGroup.traverse(child => { if(child.isMesh) child.material.opacity = 0; });
+                    // **FIXED**: Vị trí sản phẩm được xếp theo hình tròn/xoắn ốc
+                    const angle = (productIndex / totalProductInstances) * Math.PI * 4; // Use more than 2PI for a spiral
+                    const radius = 3 + (productIndex / totalProductInstances) * 7; // Radius grows outwards
+                    const x = Math.cos(angle) * radius;
+                    const y = Math.sin(angle) * radius;
+                    const z = (Math.random() - 0.5) * 5;
 
+                    const productGroup = drawMolecule3D(p, x, y, z);
+                    productGroup.traverse(child => { if(child.isMesh) child.material.opacity = 0; });
+                    
                     productGroup.userData.moleculeData.atoms.forEach(targetAtom => {
                          const sourceIndex = atomPool.findIndex(a => a.userData.symbol === targetAtom.userData.symbol);
                          const sourceAtom = (sourceIndex !== -1) ? atomPool.splice(sourceIndex, 1)[0] : atomPool.pop();
@@ -527,9 +534,9 @@ function runAnimation(plan) {
                              stepTimeline.to(sourceAtom.material, { opacity: 0, duration: DURATION }, "reform");
                              stepTimeline.to(sourceAtom.material.emissive, { r:0, g:0, b:0, duration: DURATION}, "reform");
                              stepTimeline.add(()=> {
+                                 if(sourceAtom.parent) sourceAtom.parent.remove(sourceAtom);
                                  sourceAtom.geometry.dispose();
                                  sourceAtom.material.dispose();
-                                 scene.remove(sourceAtom);
                              }, `reform+=${DURATION}`);
                          }
                     });
@@ -552,7 +559,7 @@ function runAnimation(plan) {
                             gsap.to(pulse.material, { opacity: 0, duration: 1.2, ease: "power1.out", onComplete: () => productGroup.remove(pulse) });
                         }, "reform+=" + DURATION);
                     }
-                    productSpawnOffset += 12;
+                    productIndex++;
                 }
             });
             
@@ -618,7 +625,7 @@ async function generateReactionPlan() {
     toggleDragHint(false);
     updateAtomLegend(null);
 
-    // UPDATED PROMPT: Requesting a simpler animation structure for the new logic.
+    // PROMPT ĐÃ ĐƯỢC CẬP NHẬT để đơn giản hóa cấu trúc animation
     const prompt = `
     Từ các chất tham gia: "${userInput}".
     Hãy tạo một kịch bản hoạt ảnh JSON.
@@ -647,11 +654,12 @@ async function generateReactionPlan() {
         const textResponse = result.response.text();
         let plan;
         try {
-            const startIndex = textResponse.indexOf('{');
-            const endIndex = textResponse.lastIndexOf('}');
-            if (startIndex === -1 || endIndex === -1) throw new Error("Phản hồi không chứa JSON hợp lệ.");
-            const jsonString = textResponse.substring(startIndex, endIndex + 1);
-            plan = JSON.parse(jsonString);
+            // **FIXED**: Robust JSON extraction using regex
+            const jsonMatch = textResponse.match(/{[\s\S]*}/);
+            if (!jsonMatch) {
+                throw new Error("Không tìm thấy đối tượng JSON trong phản hồi của AI.");
+            }
+            plan = JSON.parse(jsonMatch[0]);
         } catch (jsonError) {
             console.error("Lỗi parsing JSON:", jsonError, "Phản hồi thô:", textResponse);
             throw new Error("Phản hồi của AI không phải là JSON hợp lệ.");
