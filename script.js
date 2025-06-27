@@ -405,10 +405,10 @@ function drawMolecule3D(moleculeDef, x, y, z) {
     moleculeDef.atoms.forEach((atomDef, i) => {
         const geometry = new THREE.SphereGeometry(atomRadius, 32, 32);
         const material = new THREE.MeshStandardMaterial({
-            color: atomDef.color,
+            color: new THREE.Color(atomDef.color), // Ensure color is a THREE.Color object
             metalness: 0.4,
             roughness: 0.4,
-            emissive: '#000000' // Ensure emissive starts black for new atoms
+            emissive: new THREE.Color(0x000000) // Ensure emissive starts black for new atoms
         });
         const atomMesh = new THREE.Mesh(geometry, material);
 
@@ -481,6 +481,7 @@ function drawMolecule3D(moleculeDef, x, y, z) {
                     const segmentGeometry = new THREE.CylinderGeometry(bondThickness, bondThickness, distance, 8);
                     const segmentMesh = new THREE.Mesh(segmentGeometry, bondMaterial.clone()); // Clone material for individual control
                     segmentMesh.name = `bond-${bond.atom1Index}-${bond.atom2Index}-${i}`; // Give it a name for debugging
+                    segmentMesh.userData.isBond = true; // Mark as bond for animation
 
                     // Position segment
                     segmentMesh.position.copy(midPoint);
@@ -507,6 +508,7 @@ function drawMolecule3D(moleculeDef, x, y, z) {
         name: moleculeDef.name,
         molecularWeight: moleculeDef.molecularWeight,
         physicalState: moleculeDef.physicalState,
+        atoms: atomMeshes, // Store references to atom meshes
         bonds: moleculeDef.bonds, // Store bonds data as well for potential future use
         bondMeshes: bondMeshes // Store references to bond meshes
     };
@@ -861,10 +863,10 @@ function runAnimation(plan) {
             stepTimeline.to(camera.position, { z: 20, duration: 2.5, ease: "power2.inOut"}, 0); // Start at 0
             const convergenceRadius = 3; // Radius around the center where molecules converge
             reactantObjects.forEach((m) => {
-                // Move molecules towards random points within a smaller central sphere/cube
+                // Move molecules towards random points within a smaller central sphere/cube with random rotations
                 const targetX = (Math.random() - 0.5) * convergenceRadius * 2;
                 const targetY = (Math.random() - 0.5) * convergenceRadius * 2;
-                const targetZ = (Math.random() - 0.5) * convergenceRadius * 2; // Also introduce some Z variation
+                const targetZ = (Math.random() - 0.5) * convergenceRadius * 2; 
 
                 stepTimeline.to(m.obj.position, {
                     x: targetX,
@@ -872,15 +874,24 @@ function runAnimation(plan) {
                     z: targetZ,
                     duration: 2.5,
                     ease: "power2.inOut"
-                }, 0); // Start all at the same time
+                }, 0);
+                // Add random rotation to molecules during movement
+                stepTimeline.to(m.obj.rotation, {
+                    x: Math.random() * Math.PI * 2,
+                    y: Math.random() * Math.PI * 2,
+                    z: Math.random() * Math.PI * 2,
+                    duration: 2.5,
+                    ease: "power1.inOut"
+                }, 0);
             });
         } else if (step.type === 'break_bonds') {
             stepTimeline.to(camera.position, { z: 12, duration: 2, ease: "power2.inOut"}, 0); // Zoom in slightly
             reactantObjects.forEach(m => {
-                // Animate atoms emissive color (reduced glow intensity)
+                // Animate atoms to glow intensely then fade
                 m.obj.children.forEach((child) => {
                     if (child.userData.isAtom) { // Only animate atoms
-                        stepTimeline.to(child.material.emissive, { r: 0.3, g: 0.3, b: 0.1, duration: 1, ease: "power2.in" }, 0);
+                        stepTimeline.to(child.material.emissive, { r: 1, g: 1, b: 0.8, duration: 0.3, ease: "power2.in" }, 0); // Intense glow
+                        stepTimeline.to(child.material.emissive, { r: 0, g: 0, b: 0, duration: 0.7, ease: "power2.out" }, 0.3); // Fade out glow
                     }
                 });
                 // Animate bond "snap" and fade out
@@ -891,18 +902,26 @@ function runAnimation(plan) {
                         stepTimeline.to(bondMesh.material, { opacity: 0, duration: 0.5, ease: "power1.out" }, 0.1); // Start fade slightly after scale starts
                     });
                 }
-                // Animate atoms breaking apart from each other
+                // Animate atoms breaking apart from each other with a "burst" effect
                 m.obj.children.forEach((child, i) => {
                     if (child.userData.isAtom) {
-                        // Simple outward movement from center of its group
-                        const direction = new THREE.Vector3().copy(child.position).normalize();
+                        const originalPosition = child.position.clone();
+                        // Apply a short, chaotic burst movement
                         stepTimeline.to(child.position, {
-                            x: child.position.x + direction.x * 0.8,
-                            y: child.position.y + direction.y * 0.8,
-                            z: child.position.z + direction.z * 0.8,
-                            duration: 2,
-                            ease: "back.out(4)"
+                            x: originalPosition.x + (Math.random() - 0.5) * 2,
+                            y: originalPosition.y + (Math.random() - 0.5) * 2,
+                            z: originalPosition.z + (Math.random() - 0.5) * 2,
+                            duration: 0.5,
+                            ease: "power2.out"
                         }, 0);
+                        // Then move them more gently
+                        stepTimeline.to(child.position, {
+                            x: originalPosition.x + (Math.random() - 0.5) * 4,
+                            y: originalPosition.y + (Math.random() - 0.5) * 4,
+                            z: originalPosition.z + (Math.random() - 0.5) * 4,
+                            duration: 1.5,
+                            ease: "power1.out"
+                        }, 0.5); // Continue movement after burst
                     }
                 });
             });
@@ -921,13 +940,33 @@ function runAnimation(plan) {
                     duration: 0.1 // Very quick fade to turn off glow
                 }, 0); // Start at the very beginning of this stepTimeline
 
-            // Fade out old reactant atoms and bonds, then remove molecule groups
+            // Store all individual atoms from reactants after bond breaking
+            const individualReactantAtoms = [];
             reactantObjects.forEach(m => {
-                stepTimeline.to(m.obj.children.map(c => c.material), { opacity: 0, duration: 1, onComplete: () => scene.remove(m.obj) }, 0);
+                m.obj.children.forEach(child => {
+                    if (child.userData.isAtom) {
+                        individualReactantAtoms.push(child);
+                    } else if (child.userData.isBond) {
+                        // Fade out bonds and remove them. They are already small from break_bonds.
+                        stepTimeline.to(child.material, { opacity: 0, duration: 0.5, onComplete: () => scene.remove(child) }, 0);
+                    }
+                });
+                scene.remove(m.obj); // Remove the old molecule group, atoms are now individual
             });
+            molecules = []; // Clear the global molecules array as they are now individual atoms
 
-            if (plan.isExothermic) { // If reaction is exothermic, show a shockwave effect
+            if (plan.isExothermic) { // If reaction is exothermic, show a shockwave effect and a bright flash
                 stepTimeline.add(() => {
+                    // Bright flash
+                    const flashGeo = new THREE.SphereGeometry(0.1, 16, 16);
+                    const flashMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: 1, blending: THREE.AdditiveBlending });
+                    const flash = new THREE.Mesh(flashGeo, flashMat);
+                    scene.add(flash);
+                    gsap.timeline()
+                        .to(flash.scale, { x: 5, y: 5, z: 5, duration: 0.2, ease: "power2.out" })
+                        .to(flash.material, { opacity: 0, duration: 0.5, ease: "power2.in", onComplete: () => scene.remove(flash) }, 0.1);
+
+                    // Shockwave
                     const shockwaveGeo = new THREE.TorusGeometry(1, 0.1, 16, 100);
                     const shockwaveMat = new THREE.MeshBasicMaterial({ color: 0xffffee, transparent: true, opacity: 1 });
                     const shockwave = new THREE.Mesh(shockwaveGeo, shockwaveMat);
@@ -939,29 +978,146 @@ function runAnimation(plan) {
 
             }
 
-            let productX = -5;
+            let currentAtomIndex = 0;
+            let productSpawnOffset = -5; // Initial X offset for placing product molecules
+
             plan.products.forEach(p => {
                 for (let j = 0; j < p.count; j++) {
-                    const productObj = drawMolecule3D(p, productX, (j % 2 === 0 ? 1 : -1) * 3, 0);
-                    // Initial state for new products: transparent atoms and bonds, bonds start from zero scale
-                    productObj.children.forEach(c => { 
-                        c.material.transparent = true; 
-                        c.material.opacity = 0; 
-                        if (c.name.startsWith('bond-')) { // Check if it's a bond mesh
-                            c.scale.set(0.001, 0.001, 0.001); // Start bonds very small
+                    const productAtoms = [];
+                    // For each atom in the product, assign an existing individual reactant atom
+                    for (let k = 0; k < p.atoms.length; k++) {
+                        if (currentAtomIndex < individualReactantAtoms.length) {
+                            productAtoms.push(individualReactantAtoms[currentAtomIndex++]);
+                        } else {
+                            // Fallback if not enough original atoms (shouldn't happen with balanced reactions)
+                            console.warn("Not enough individual atoms for product creation. Creating new atom mesh.");
+                            const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+                            const material = new THREE.MeshStandardMaterial({
+                                color: new THREE.Color(p.atoms[k].color),
+                                metalness: 0.4,
+                                roughness: 0.4,
+                                emissive: new THREE.Color(0x000000)
+                            });
+                            const newAtomMesh = new THREE.Mesh(geometry, material);
+                            scene.add(newAtomMesh); // Add to scene if newly created
+                            productAtoms.push(newAtomMesh);
                         }
+                    }
+
+                    // Create a new THREE.Group for the product molecule
+                    const productGroup = new THREE.Group();
+                    productGroup.userData.moleculeData = {
+                        molecule: p.molecule,
+                        name: p.name,
+                        molecularWeight: p.molecularWeight,
+                        physicalState: p.physicalState,
+                        atoms: [], // Will store actual atom mesh references
+                        bonds: p.bonds,
+                        bondMeshes: [] // Will store actual bond mesh references
+                    };
+                    scene.add(productGroup); // Add the new product group to the scene
+                    molecules.push(productGroup); // Add to global molecules array
+
+                    // Position atoms relative to the new product group's center
+                    const productCenter = new THREE.Vector3(productSpawnOffset, (j % 2 === 0 ? 1 : -1) * 3, 0);
+
+                    productAtoms.forEach((atom, k) => {
+                        // Move atom from its current dispersed position to its new position within the product molecule
+                        const atomDef = p.atoms[k];
+                        const angle = (k / p.atoms.length) * 2 * Math.PI;
+                        const spreadRadius = 0.5 * 1.5; // Distance from center of product molecule for atoms
+                        const targetAtomX = productCenter.x + Math.cos(angle) * spreadRadius;
+                        const targetAtomY = productCenter.y + Math.sin(angle) * spreadRadius;
+                        const targetAtomZ = productCenter.z + (Math.random() - 0.5) * 0.5 * 0.5;
+
+                        stepTimeline.to(atom.position, {
+                            x: targetAtomX,
+                            y: targetAtomY,
+                            z: targetAtomZ,
+                            duration: 1.5,
+                            ease: "power2.inOut"
+                        }, ">-0.5"); // Stagger movement slightly
+
+                        // Fade in atom material opacity
+                        stepTimeline.to(atom.material, { opacity: 1, duration: 1 }, "<");
+                        // Set the atom's color to the product atom color
+                        stepTimeline.to(atom.material.color, {
+                            r: new THREE.Color(atomDef.color).r,
+                            g: new THREE.Color(atomDef.color).g,
+                            b: new THREE.Color(atomDef.color).b,
+                            duration: 0.5
+                        }, "<"); // Change color when moving to new position
+
+                        productGroup.add(atom); // Add atom to the product group
+                        productGroup.userData.moleculeData.atoms.push(atom); // Store in new group's data
                     });
 
-                    // Animate atoms and bonds to full opacity and scale (for bonds)
-                    stepTimeline.to(productObj.children.map(c => c.material), { opacity: 1, duration: 2 }, 1); // Start at 1 second mark of stepTimeline
-                    
-                    // Animate bond scale in for products
-                    productObj.children.forEach(c => {
-                        if (c.name.startsWith('bond-')) {
-                            stepTimeline.to(c.scale, { x: 1, y: 1, z: 1, duration: 1.5, ease: "back.out(1.7)" }, 1); // Start at 1 second mark of stepTimeline
-                        }
-                    });
-                    productX += 5;
+                    // Create and animate new bonds
+                    if (p.bonds && p.bonds.length > 0) {
+                        p.bonds.forEach(bond => {
+                            const atomA = productAtoms[bond.atom1Index];
+                            const atomB = productAtoms[bond.atom2Index];
+
+                            if (atomA && atomB) {
+                                const positionA = atomA.position;
+                                const positionB = atomB.position;
+
+                                const distance = positionA.distanceTo(positionB);
+                                const midPoint = new THREE.Vector3().addVectors(positionA, positionB).divideScalar(2);
+
+                                const direction = new THREE.Vector3().subVectors(positionB, positionA).normalize();
+                                let perpendicular = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
+                                if (perpendicular.lengthSq() < 0.0001) {
+                                    perpendicular.set(1, 0, 0);
+                                    perpendicular.crossVectors(direction, perpendicular).normalize();
+                                }
+
+                                let bondSegments = 1;
+                                let offsetDistance = 0;
+
+                                switch (bond.bondType) {
+                                    case 'single': bondSegments = 1; offsetDistance = 0; break;
+                                    case 'double': bondSegments = 2; offsetDistance = 0.1 * 0.5; break;
+                                    case 'triple': bondSegments = 3; offsetDistance = 0.1 * 0.7; break;
+                                }
+
+                                for (let i = 0; i < bondSegments; i++) {
+                                    const segmentGeometry = new THREE.CylinderGeometry(0.1, 0.1, distance, 8);
+                                    const segmentMaterial = new THREE.MeshStandardMaterial({
+                                        color: 0xcccccc,
+                                        metalness: 0.2,
+                                        roughness: 0.6,
+                                        transparent: true,
+                                        opacity: 0 // Start invisible
+                                    });
+                                    const segmentMesh = new THREE.Mesh(segmentGeometry, segmentMaterial);
+                                    segmentMesh.userData.isBond = true;
+
+                                    segmentMesh.position.copy(midPoint);
+                                    segmentMesh.lookAt(positionB);
+                                    segmentMesh.rotation.x += Math.PI / 2;
+
+                                    if (bondSegments > 1) {
+                                        const currentOffset = (i - (bondSegments - 1) / 2) * offsetDistance;
+                                        segmentMesh.position.add(perpendicular.clone().multiplyScalar(currentOffset));
+                                    }
+                                    
+                                    productGroup.add(segmentMesh);
+                                    productGroup.userData.moleculeData.bondMeshes.push(segmentMesh);
+
+                                    // Animate bond appearance and glow
+                                    stepTimeline.fromTo(segmentMesh.scale, { x: 0.001, y: 0.001, z: 0.001 }, { x: 1, y: 1, z: 1, duration: 0.8, ease: "back.out(1.7)" }, ">-1"); // Grow bonds
+                                    stepTimeline.to(segmentMesh.material, { opacity: 1, duration: 0.5 }, "<"); // Fade in bond opacity
+                                    // Brief glow for new bonds
+                                    stepTimeline.to(atomA.material.emissive, { r: 0.5, g: 0.5, b: 0.5, duration: 0.2 }, "<");
+                                    stepTimeline.to(atomB.material.emissive, { r: 0.5, g: 0.5, b: 0.5, duration: 0.2 }, "<");
+                                    stepTimeline.to(atomA.material.emissive, { r: 0, g: 0, b: 0, duration: 0.5 }, ">");
+                                    stepTimeline.to(atomB.material.emissive, { r: 0, g: 0, b: 0, duration: 0.5 }, "<");
+                                }
+                            }
+                        });
+                    }
+                    productSpawnOffset += 5; // Offset for next product molecule
                 }
             });
         } else if (step.type === 'gas_evolution') { // Handle gas evolution step
